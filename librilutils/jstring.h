@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013 The Android Open Source Project
+ * Copyright (C) 2006 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,25 +14,25 @@
  * limitations under the License.
  */
 
-#ifndef LIBRILUTILS_H
-#define LIBRILUTILS_H
+#ifndef __CUTILS_STRING16_H
+#define __CUTILS_STRING16_H
 
 #include <stdint.h>
+#include <stddef.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-/**
- * Return system time in nanos.
- *
- * This is a monotonicly increasing clock and
- * return the same value as System.nanoTime in java.
- */
-uint64_t ril_nano_time(void);
+#if !defined(__cplusplus) || (201103L > __cplusplus) /* these are builtin types for C++11 */
+    typedef unsigned short char16_t;
+#endif
+
+char * strndup16to8 (const char16_t* s, size_t n);
+char16_t * strdup8to16 (const char* s, size_t *out_len);
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif // LIBRILUTILS_H
+#endif /* __CUTILS_STRING16_H */

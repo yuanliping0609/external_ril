@@ -21,13 +21,13 @@
 #include <unistd.h>
 #include <errno.h>
 #include <fcntl.h>
-#include <utils/Log.h>
-#include <ril_event.h>
-#include <string.h>
-#include <sys/time.h>
-#include <time.h>
+#include <telephony/ril_log.h>
 
+#include <sys/time.h>
+#include <ril_event.h>
 #include <pthread.h>
+#include <telephony/ril.h>
+
 static pthread_mutex_t listMutex;
 #define MUTEX_ACQUIRE() pthread_mutex_lock(&listMutex)
 #define MUTEX_RELEASE() pthread_mutex_unlock(&listMutex)
@@ -155,7 +155,7 @@ static void removeWatch(struct ril_event * ev, int index)
     dlog("~~~~ -removeWatch ~~~~");
 }
 
-static void processTimeouts()
+static void processTimeouts(void)
 {
     dlog("~~~~ +processTimeouts ~~~~");
     MUTEX_ACQUIRE();
@@ -199,7 +199,7 @@ static void processReadReadies(fd_set * rfds, int n)
     dlog("~~~~ -processReadReadies (%d) ~~~~", n);
 }
 
-static void firePending()
+static void firePending(void)
 {
     dlog("~~~~ +firePending ~~~~");
     struct ril_event * ev = pending_list.next;
@@ -238,7 +238,7 @@ static int calcNextTimeout(struct timeval * tv)
 }
 
 // Initialize internal data structs
-void ril_event_init()
+void ril_event_init(void)
 {
     MUTEX_INIT();
 
@@ -258,7 +258,8 @@ void ril_event_set(struct ril_event * ev, int fd, bool persist, ril_event_cb fun
     ev->persist = persist;
     ev->func = func;
     ev->param = param;
-    fcntl(fd, F_SETFL, O_NONBLOCK);
+    if (fd >= 0)
+        fcntl(fd, F_SETFL, O_NONBLOCK);
 }
 
 // Add event to watch list
@@ -342,7 +343,7 @@ static void printReadies(fd_set * rfds)
 #define printReadies(rfds) do {} while(0)
 #endif
 
-void ril_event_loop()
+void ril_event_loop(void)
 {
     int n;
     fd_set rfds;

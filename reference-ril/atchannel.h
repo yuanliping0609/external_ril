@@ -74,7 +74,7 @@ typedef struct {
 typedef void (*ATUnsolHandler)(const char *s, const char *sms_pdu);
 
 int at_open(int fd, ATUnsolHandler h);
-void at_close();
+void at_close(void);
 
 /* This callback is invoked on the command thread.
    You should reset or handshake here to avoid getting out of sync */
@@ -99,7 +99,7 @@ int at_send_command_multiline (const char *command,
                                  ATResponse **pp_outResponse);
 
 
-int at_handshake();
+int at_handshake(void);
 
 int at_send_command (const char *command, ATResponse **pp_outResponse);
 

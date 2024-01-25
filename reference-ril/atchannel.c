@@ -28,10 +28,9 @@
 #include <sys/time.h>
 #include <time.h>
 #include <unistd.h>
+#include <telephony/ril_log.h>
 
-#define LOG_NDEBUG 0
 #define LOG_TAG "AT"
-#include <utils/Log.h>
 
 #include "misc.h"
 
@@ -82,7 +81,7 @@ static void (*s_onTimeout)(void) = NULL;
 static void (*s_onReaderClosed)(void) = NULL;
 static int s_readerClosed;
 
-static void onReaderClosed();
+static void onReaderClosed(void);
 static int writeCtrlZ (const char *s);
 static int writeline (const char *s);
 
@@ -181,17 +180,6 @@ static int isFinalResponseSuccess(const char *line)
 
     return 0;
 }
-
-/**
- * returns 1 if line is a final response, either  error or success
- * See 27.007 annex B
- * WARNING: NO CARRIER and others are sometimes unsolicited
- */
-static int isFinalResponse(const char *line)
-{
-    return isFinalResponseSuccess(line) || isFinalResponseError(line);
-}
-
 
 /**
  * returns 1 if line is the first line in (what will be) a two-line
@@ -322,7 +310,7 @@ static char * findNextEOL(char *cur)
  * have buffered stdio.
  */
 
-static const char *readline()
+static const char *readline(void)
 {
     ssize_t count;
 
@@ -410,7 +398,7 @@ static const char *readline()
 }
 
 
-static void onReaderClosed()
+static void onReaderClosed(void)
 {
     if (s_onReaderClosed != NULL && s_readerClosed == 0) {
 
@@ -427,7 +415,7 @@ static void onReaderClosed()
 }
 
 
-static void *readerLoop(void *arg __unused)
+static void *readerLoop(void *arg)
 {
     for (;;) {
         const char * line;
@@ -525,8 +513,6 @@ static int writeCtrlZ (const char *s)
 
     RLOGD("AT> %s^Z\n", s);
 
-    AT_DUMP( ">* ", s, strlen(s) );
-
     /* the main string */
     while (cur < len) {
         do {
@@ -553,7 +539,7 @@ static int writeCtrlZ (const char *s)
     return 0;
 }
 
-static void clearPendingCommand()
+static void clearPendingCommand(void)
 {
     if (sp_response != NULL) {
         at_response_free(sp_response);
@@ -572,7 +558,6 @@ static void clearPendingCommand()
 int at_open(int fd, ATUnsolHandler h)
 {
     int ret;
-    pthread_t tid;
     pthread_attr_t attr;
 
     s_fd = fd;
@@ -616,7 +601,7 @@ void at_close()
     /* the reader thread should eventually die */
 }
 
-static ATResponse * at_response_new()
+static ATResponse * at_response_new(void)
 {
     return (ATResponse *) calloc(1, sizeof(ATResponse));
 }
@@ -741,7 +726,6 @@ static int at_send_command_full (const char *command, ATCommandType type,
                     long long timeoutMsec, ATResponse **pp_outResponse)
 {
     int err;
-    bool inEmulator;
 
     if (0 != pthread_equal(s_tid_reader, pthread_self())) {
         /* cannot be called from reader thread */

@@ -33,7 +33,7 @@ struct ril_event {
 };
 
 // Initialize internal data structs
-void ril_event_init();
+void ril_event_init(void);
 
 // Initialize an event
 void ril_event_set(struct ril_event * ev, int fd, bool persist, ril_event_cb func, void * param);
@@ -48,5 +48,4 @@ void ril_timer_add(struct ril_event * ev, struct timeval * tv);
 void ril_event_del(struct ril_event * ev);
 
 // Event loop
-void ril_event_loop();
-
+void ril_event_loop(void);

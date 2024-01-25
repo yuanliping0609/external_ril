@@ -107,15 +107,15 @@ extern "C" {
  *                    Updated data structures: RIL_CarrierInfoForImsiEncryption_v16
  *                    New data structure: RIL_PublicKeyType
  */
-#define RIL_VERSION 16
-#define LAST_IMPRECISE_RIL_VERSION 12 // Better self-documented name
-#define RIL_VERSION_MIN 6 /* Minimum RIL_VERSION supported */
+#define RIL_VERSION 15
+#define LAST_IMPRECISE_RIL_VERSION 15 // Better self-documented name
+#define RIL_VERSION_MIN 15 /* Minimum RIL_VERSION supported */
 
 #define CDMA_ALPHA_INFO_BUFFER_LENGTH 64
 #define CDMA_NUMBER_INFO_BUFFER_LENGTH 81
 
 #define MAX_RILDS 3
-#define MAX_SERVICE_NAME_LENGTH 6
+#define MAX_SOCKET_NAME_LENGTH 6
 #define MAX_CLIENT_ID_LENGTH 2
 #define MAX_DEBUG_SOCKET_NAME_LENGTH 12
 #define MAX_QEMU_PIPE_NAME_LENGTH  11
@@ -241,6 +241,17 @@ typedef enum {
 typedef enum {
     RADIO_STATE_OFF = 0,                   /* Radio explictly powered off (eg CFUN=0) */
     RADIO_STATE_UNAVAILABLE = 1,           /* Radio unavailable (eg, resetting or not booted) */
+    /* States 2-9 below are deprecated. Just leaving them here for backward compatibility. */
+    RADIO_STATE_SIM_NOT_READY = 2,         /* Radio is on, but the SIM interface is not ready */
+    RADIO_STATE_SIM_LOCKED_OR_ABSENT = 3,  /* SIM PIN locked, PUK required, network
+                                              personalization locked, or SIM absent */
+    RADIO_STATE_SIM_READY = 4,             /* Radio is on and SIM interface is available */
+    RADIO_STATE_RUIM_NOT_READY = 5,        /* Radio is on, but the RUIM interface is not ready */
+    RADIO_STATE_RUIM_READY = 6,            /* Radio is on and the RUIM interface is available */
+    RADIO_STATE_RUIM_LOCKED_OR_ABSENT = 7, /* RUIM PIN locked, PUK required, network
+                                              personalization locked, or RUIM absent */
+    RADIO_STATE_NV_NOT_READY = 8,          /* Radio is on, but the NV interface is not available */
+    RADIO_STATE_NV_READY = 9,              /* Radio is on and the NV interface is available */
     RADIO_STATE_ON = 10                    /* Radio is on */
 } RIL_RadioState;
 
@@ -379,6 +390,7 @@ typedef struct {
     RIL_UUS_Info *  uusInfo;    /* NULL or Pointer to User-User Signaling Information */
 } RIL_Call;
 
+/* Deprecated, use RIL_Data_Call_Response_v6 */
 typedef struct {
     int             cid;        /* Context ID, uniquely identifies this call */
     int             active;     /* 0=inactive, 1=active/physical link down, 2=active/physical link up */
@@ -1009,6 +1021,11 @@ typedef struct {
     /** size <= RadioConst::CARD_MAX_APPS */
     RIL_AppStatusV1_5 applications[RIL_CARD_MAX_APPS];
 } RIL_CardStatus_v1_5;  // 1.5
+
+typedef struct{
+    int session_id;
+    int select_response;
+} RIL_Sim_Open_Channel;
 
 /** The result of a SIM refresh, returned in data[0] of RIL_UNSOL_SIM_REFRESH
  *      or as part of RIL_SimRefreshResponse_v7
@@ -5290,6 +5307,29 @@ typedef struct {
 #define RIL_REQUEST_SIM_CLOSE_CHANNEL 116
 
 /**
+ * RIL_REQUEST_SIM_TRANSMIT_APDU_CHANNEL
+ *
+ * Exchange APDUs with a UICC over a previously opened logical channel. This
+ * command reflects TS 27.007 "generic logical channel access" operation
+ * (+CGLA). The modem should filter channel management and SELECT by DF name
+ * commands.
+ *
+ * "data" is a const RIL_SIM_APDU*
+ *
+ * "response" is a const RIL_SIM_IO_Response *
+ *
+ * Valid errors:
+ *  SUCCESS
+ *  RADIO_NOT_AVAILABLE
+ *  INTERNAL_ERR
+ *  NO_MEMORY
+ *  NO_RESOURCES
+ *  CANCELLED
+ *  REQUEST_NOT_SUPPORTED
+ */
+#define RIL_REQUEST_SIM_TRANSMIT_APDU_CHANNEL 117
+
+/**
  *  RIL_REQUEST_ALLOW_DATA
  *
  *  Tells the modem whether data calls are allowed or not
@@ -5368,19 +5408,19 @@ typedef struct {
 #define RIL_REQUEST_GET_ACTIVITY_INFO 135
 
 /**
- * @param info Response info struct containing response type, serial no. and error
- * @param networkTypeBitmap a 32-bit bitmap of RadioAccessFamily.
+ * RIL_REQUEST_GET_MODEM_STATUS
  *
- * Valid errors returned:
- *   RadioError:NONE
- *   RadioError:RADIO_NOT_AVAILABLE
- *   RadioError:INTERNAL_ERR
- *   RadioError:INVALID_ARGUMENTS
- *   RadioError:MODEM_ERR
- *   RadioError:REQUEST_NOT_SUPPORTED
- *   RadioError:NO_RESOURCES
+ * request status of a logci modem
+ *
+ * doing:
+ *
+ * Valid errors:
+ *  SUCCESS
+ *  RADIO_NOT_AVAILABLE
+ *  MODEM_ERR
+ *
  */
-#define RIL_REQUEST_GET_PREFERRED_NETWORK_TYPE_BITMAP 147
+#define RIL_REQUEST_GET_MODEM_STATUS 147
 
 /**
  * RIL_REQUEST_EMERGENCY_DIAL
@@ -5462,7 +5502,21 @@ typedef struct {
 #define RIL_REQUEST_ENABLE_UICC_APPLICATIONS 154
 
 /***********************************************************************/
+#define RIL_IMS_REQUEST_BASE 500
 
+/*
+RIL_REQUEST_IMS_REG_STATE_CHANGE
+* open/close ims resgister
+*
+* "data" is int *
+* ((int *)data)[0] == 1 open ims reg
+* ((int *)data)[0] == 0 colse ims reg
+*
+* "response" is NULL
+*/
+#define RIL_REQUEST_IMS_REG_STATE_CHANGE (RIL_IMS_REQUEST_BASE + 1)
+
+/***********************************************************************/
 #define RIL_UNSOL_RESPONSE_BASE 1000
 
 /**
@@ -6009,31 +6063,6 @@ typedef struct {
 /***********************************************************************/
 
 
-#if defined(ANDROID_MULTI_SIM)
-/**
- * RIL_Request Function pointer
- *
- * @param request is one of RIL_REQUEST_*
- * @param data is pointer to data defined for that RIL_REQUEST_*
- *        data is owned by caller, and should not be modified or freed by callee
- *        structures passed as data may contain pointers to non-contiguous memory
- * @param t should be used in subsequent call to RIL_onResponse
- * @param datalen is the length of "data" which is defined as other argument. It may or may
- *        not be equal to sizeof(data). Refer to the documentation of individual structures
- *        to find if pointers listed in the structure are contiguous and counted in the datalen
- *        length or not.
- *        (Eg: RIL_IMS_SMS_Message where we don't have datalen equal to sizeof(data))
- *
- */
-typedef void (*RIL_RequestFunc) (int request, void *data,
-                                    size_t datalen, RIL_Token t, RIL_SOCKET_ID socket_id);
-
-/**
- * This function should return the current radio state synchronously
- */
-typedef RIL_RadioState (*RIL_RadioStateRequest)(RIL_SOCKET_ID socket_id);
-
-#else
 /* Backward compatible */
 
 /**
@@ -6057,10 +6086,7 @@ typedef void (*RIL_RequestFunc) (int request, void *data,
 /**
  * This function should return the current radio state synchronously
  */
-typedef RIL_RadioState (*RIL_RadioStateRequest)();
-
-#endif
-
+typedef RIL_RadioState (*RIL_RadioStateRequest)(void);
 
 /**
  * This function returns "1" if the specified RIL_REQUEST code is
@@ -6119,7 +6145,6 @@ typedef struct {
     char *password;             /* the password for APN, or NULL */
 } RIL_InitialAttachApn;
 
-#ifdef RIL_SHLIB
 struct RIL_Env {
     /**
      * "t" is parameter passed in on previous call to RIL_Notification
@@ -6135,15 +6160,6 @@ struct RIL_Env {
     void (*OnRequestComplete)(RIL_Token t, RIL_Errno e,
                            void *response, size_t responselen);
 
-#if defined(ANDROID_MULTI_SIM)
-    /**
-     * "unsolResponse" is one of RIL_UNSOL_RESPONSE_*
-     * "data" is pointer to data defined for that RIL_UNSOL_RESPONSE_*
-     *
-     * "data" is owned by caller, and should not be modified or freed by callee
-     */
-    void (*OnUnsolicitedResponse)(int unsolResponse, const void *data, size_t datalen, RIL_SOCKET_ID socket_id);
-#else
     /**
      * "unsolResponse" is one of RIL_UNSOL_RESPONSE_*
      * "data" is pointer to data defined for that RIL_UNSOL_RESPONSE_*
@@ -6151,7 +6167,7 @@ struct RIL_Env {
      * "data" is owned by caller, and should not be modified or freed by callee
      */
     void (*OnUnsolicitedResponse)(int unsolResponse, const void *data, size_t datalen);
-#endif
+
     /**
      * Call user-specifed "callback" function on on the same thread that
      * RIL_RequestFunc is called. If "relativeTime" is specified, then it specifies
@@ -6183,100 +6199,6 @@ struct RIL_Env {
  *
  */
 const RIL_RadioFunctions *RIL_Init(const struct RIL_Env *env, int argc, char **argv);
-
-/**
- *  If BT SAP(SIM Access Profile) is supported, then RIL implementations must define RIL_SAP_Init
- *  for initializing RIL_RadioFunctions used for BT SAP communcations. It is called whenever RILD
- *  starts or modem restarts. Returns handlers for SAP related request that are made on SAP
- *  sepecific socket, analogous to the RIL_RadioFunctions returned by the call to RIL_Init
- *  and used on the general RIL socket.
- *  argc and argv will be command line arguments intended for the RIL implementation
- *  Return NULL on error.
- *
- * @param env is environment point defined as RIL_Env
- * @param argc number of arguments
- * @param argv list fo arguments
- *
- */
-const RIL_RadioFunctions *RIL_SAP_Init(const struct RIL_Env *env, int argc, char **argv);
-
-#else /* RIL_SHLIB */
-
-/**
- * Call this once at startup to register notification routine
- *
- * @param callbacks user-specifed callback function
- */
-void RIL_register (const RIL_RadioFunctions *callbacks);
-
-void rilc_thread_pool();
-
-
-/**
- *
- * RIL_onRequestComplete will return as soon as possible
- *
- * @param t is parameter passed in on previous call to RIL_Notification
- *          routine.
- * @param e error code
- *          if "e" != SUCCESS, then response can be null/is ignored
- * @param response is owned by caller, and should not be modified or
- *                 freed by callee
- * @param responselen the length of response in byte
- */
-void RIL_onRequestComplete(RIL_Token t, RIL_Errno e,
-                           void *response, size_t responselen);
-
-/**
- * RIL_onRequestAck will be called by vendor when an Async RIL request was received by them and
- * an ack needs to be sent back to java ril. This doesn't mark the end of the command or it's
- * results, just that the command was received and will take a while. After sending this Ack
- * its vendor's responsibility to make sure that AP is up whenever needed while command is
- * being processed.
- *
- * @param t is parameter passed in on previous call to RIL_Notification
- *          routine.
- */
-void RIL_onRequestAck(RIL_Token t);
-
-#if defined(ANDROID_MULTI_SIM)
-/**
- * @param unsolResponse is one of RIL_UNSOL_RESPONSE_*
- * @param data is pointer to data defined for that RIL_UNSOL_RESPONSE_*
- *     "data" is owned by caller, and should not be modified or freed by callee
- * @param datalen the length of data in byte
- */
-
-void RIL_onUnsolicitedResponse(int unsolResponse, const void *data,
-                                size_t datalen, RIL_SOCKET_ID socket_id);
-#else
-/**
- * @param unsolResponse is one of RIL_UNSOL_RESPONSE_*
- * @param data is pointer to data defined for that RIL_UNSOL_RESPONSE_*
- *     "data" is owned by caller, and should not be modified or freed by callee
- * @param datalen the length of data in byte
- */
-
-void RIL_onUnsolicitedResponse(int unsolResponse, const void *data,
-                                size_t datalen);
-#endif
-
-/**
- * Call user-specifed "callback" function on on the same thread that
- * RIL_RequestFunc is called. If "relativeTime" is specified, then it specifies
- * a relative time value at which the callback is invoked. If relativeTime is
- * NULL or points to a 0-filled structure, the callback will be invoked as
- * soon as possible
- *
- * @param callback user-specifed callback function
- * @param param parameter list
- * @param relativeTime a relative time value at which the callback is invoked
- */
-
-void RIL_requestTimedCallback (RIL_TimedCallback callback,
-                               void *param, const struct timeval *relativeTime);
-
-#endif /* RIL_SHLIB */
 
 #ifdef __cplusplus
 }
