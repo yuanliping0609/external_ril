@@ -31,18 +31,14 @@
 #include <alloca.h>
 #include "atchannel.h"
 #include "at_tok.h"
-#include "base64util.h"
 #include "misc.h"
 #include <getopt.h>
 #include <sys/socket.h>
-#include <cutils/properties.h>
-#include <cutils/sockets.h>
 #include <termios.h>
 #include <sys/wait.h>
 #include <stdbool.h>
 #include <net/if.h>
 #include <netinet/in.h>
-#include <linux/vm_sockets.h>
 #include <arpa/inet.h>
 
 #include "guest/hals/ril/reference-libril/ril.h"
@@ -58,19 +54,9 @@ static void *noopRemoveWarning( void *a ) { return a; }
 
 /* pathname returned from RIL_REQUEST_SETUP_DATA_CALL / RIL_REQUEST_SETUP_DEFAULT_PDP */
 // This is used if Wifi is not supported, plain old eth0
-#ifdef CUTTLEFISH_ENABLE
-#define PPP_TTY_PATH_ETH0 "rmnet0"
-#else
 #define PPP_TTY_PATH_ETH0 "eth0"
-#endif
 // This is used for emulator
 #define EMULATOR_RADIO_INTERFACE "eth0"
-
-// for sim
-#define AUTH_CONTEXT_EAP_SIM                    128
-#define AUTH_CONTEXT_EAP_AKA                    129
-#define SIM_AUTH_RESPONSE_SUCCESS               0
-#define SIM_AUTH_RESPONSE_SYNC_FAILURE          3
 
 // Default MTU value
 #define DEFAULT_MTU 1500
@@ -211,48 +197,6 @@ static int32_t net2pmask[] = {
 #define LTE   (RAF_LTE | RAF_LTE_CA)
 #define NR    (RAF_NR)
 
-typedef struct {
-    int bitmap;
-    int type;
-} NetworkTypeBitmap;
-
-static NetworkTypeBitmap s_networkMask[] = {
-    {WCDMA | GSM,                     MDM_GSM | (MDM_WCDMA << 8)},                // 0 - GSM / WCDMA Pref
-    {GSM,                             MDM_GSM},                                   // 1 - GSM only
-    {WCDMA,                           MDM_WCDMA},                                 // 2 - WCDMA only
-    {WCDMA | GSM,                     MDM_GSM | MDM_WCDMA},                       // 3 - GSM / WCDMA Auto
-    {CDMA | EVDO,                     MDM_CDMA | MDM_EVDO},                       // 4 - CDMA / EvDo Auto
-    {CDMA,                            MDM_CDMA},                                  // 5 - CDMA only
-    {EVDO,                            MDM_EVDO},                                  // 6 - EvDo only
-    {GSM | WCDMA | CDMA | EVDO,       MDM_GSM | MDM_WCDMA | MDM_CDMA | MDM_EVDO}, // 7 - GSM/WCDMA, CDMA, EvDo
-    {LTE | CDMA | EVDO,               MDM_LTE | MDM_CDMA | MDM_EVDO},             // 8 - LTE, CDMA and EvDo
-    {LTE | GSM | WCDMA,               MDM_LTE | MDM_GSM | MDM_WCDMA},             // 9 - LTE, GSM/WCDMA
-    {LTE | CDMA | EVDO | GSM | WCDMA, MDM_LTE | MDM_CDMA | MDM_EVDO | MDM_GSM | MDM_WCDMA}, // 10 - LTE, CDMA, EvDo, GSM/WCDMA
-    {LTE,                             MDM_LTE},                                             // 11 - LTE only
-    {LTE | WCDMA,                     MDM_LTE | MDM_WCDMA},                                 // 12 - LTE and WCDMA
-    {RAF_TD_SCDMA,                    MDM_TDSCDMA},                                         // 13 - TD-SCDMA only
-    {RAF_TD_SCDMA | WCDMA,            MDM_WCDMA | MDM_TDSCDMA},                             // 14 - TD-SCDMA and WCDMA
-    {LTE | RAF_TD_SCDMA,              MDM_LTE | MDM_TDSCDMA},                               // 15 - LTE and TD-SCDMA
-    {RAF_TD_SCDMA | GSM,              MDM_TDSCDMA | MDM_GSM},                               // 16 - TD-SCDMA and GSM
-    {LTE | RAF_TD_SCDMA | GSM,        MDM_LTE | MDM_TDSCDMA | MDM_GSM},                     // 17 - TD-SCDMA, GSM and LTE
-    {RAF_TD_SCDMA | GSM | WCDMA,      MDM_WCDMA | MDM_TDSCDMA | MDM_GSM},                   // 18 - TD-SCDMA, GSM and WCDMA
-    {LTE | RAF_TD_SCDMA | WCDMA,      MDM_LTE | MDM_WCDMA | MDM_TDSCDMA},                   // 19 - LTE, TD-SCDMA and WCDMA
-    {LTE | RAF_TD_SCDMA | GSM | WCDMA,MDM_LTE | MDM_WCDMA | MDM_TDSCDMA | MDM_GSM},         // 20 - LTE, TD-SCDMA, GSM, and WCDMA
-    {RAF_TD_SCDMA | CDMA | EVDO | GSM | WCDMA,  MDM_EVDO | MDM_CDMA | MDM_WCDMA | MDM_TDSCDMA | MDM_GSM},            // 21 - TD-SCDMA, CDMA, EVDO, GSM and WCDMA
-    {LTE | RAF_TD_SCDMA | CDMA | EVDO | GSM | WCDMA, MDM_LTE | MDM_TDSCDMA | MDM_CDMA | MDM_EVDO | MDM_WCDMA | MDM_GSM},  // 22 - LTE, TDCSDMA, CDMA, EVDO, GSM and WCDMA
-    {NR,                              MDM_NR},                                                             // 23 - NR 5G only mode
-    {NR | LTE,                        MDM_NR | MDM_LTE},                                                   // 24 - NR 5G, LTE
-    {NR | LTE | CDMA | EVDO,          MDM_NR | MDM_LTE | MDM_CDMA | MDM_EVDO},                             // 25 - NR 5G, LTE, CDMA and EvDo
-    {NR | LTE | GSM | WCDMA,          MDM_NR | MDM_LTE | MDM_WCDMA | MDM_GSM},                             // 26 - NR 5G, LTE, GSM and WCDMA
-    {NR | LTE | CDMA | EVDO | GSM | WCDMA, MDM_NR | MDM_LTE | MDM_CDMA | MDM_EVDO | MDM_WCDMA | MDM_GSM},  // 27 - NR 5G, LTE, CDMA, EvDo, GSM and WCDMA
-    {NR | LTE | WCDMA,                MDM_NR | MDM_LTE | MDM_WCDMA},                                       // 28 - NR 5G, LTE and WCDMA
-    {NR | LTE | RAF_TD_SCDMA,         MDM_NR | MDM_LTE | MDM_TDSCDMA},                                     // 29 - NR 5G, LTE and TDSCDMA
-    {NR | LTE | RAF_TD_SCDMA | GSM,   MDM_NR | MDM_LTE | MDM_TDSCDMA | MDM_GSM},                           // 30 - NR 5G, LTE, TD-SCDMA and GSM
-    {NR | LTE | RAF_TD_SCDMA | WCDMA, MDM_NR | MDM_LTE | MDM_TDSCDMA | MDM_WCDMA},                         // 31 - NR 5G, LTE, TD-SCDMA, WCDMA
-    {NR | LTE | RAF_TD_SCDMA | GSM | WCDMA, MDM_NR | MDM_LTE | MDM_TDSCDMA | MDM_WCDMA | MDM_GSM},         // 32 - NR 5G, LTE, TD-SCDMA, GSM and WCDMA
-    {NR | LTE | RAF_TD_SCDMA | CDMA | EVDO | GSM | WCDMA, MDM_NR | MDM_LTE | MDM_TDSCDMA | MDM_CDMA | MDM_EVDO | MDM_WCDMA | MDM_GSM},  // 33 - NR 5G, LTE, TD-SCDMA, CDMA, EVDO, GSM and WCDMA
-};
-
 static int is3gpp2(int radioTech) {
     switch (radioTech) {
         case RADIO_TECH_IS95A:
@@ -315,34 +259,21 @@ static const RIL_RadioFunctions s_callbacks = {
     getVersion
 };
 
-#ifdef RIL_SHLIB
 static const struct RIL_Env *s_rilenv;
 
 #define RIL_onRequestComplete(t, e, response, responselen) s_rilenv->OnRequestComplete(t,e, response, responselen)
 #define RIL_onUnsolicitedResponse(a,b,c) s_rilenv->OnUnsolicitedResponse(a,b,c)
 #define RIL_requestTimedCallback(a,b,c) s_rilenv->RequestTimedCallback(a,b,c)
-#endif
 
 static RIL_RadioState sState = RADIO_STATE_UNAVAILABLE;
-static bool isNrDualConnectivityEnabled = true;
 
 static pthread_mutex_t s_state_mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t s_state_cond = PTHREAD_COND_INITIALIZER;
 
-static int s_port = -1;
-static const char * s_device_path = NULL;
-static int          s_device_socket = 0;
-static uint32_t s_modem_simulator_port = -1;
-
 /* trigger change to this with s_state_cond */
 static int s_closed = 0;
 
-static int sFD;     /* file desc of AT channel */
-static char sATBuffer[MAX_AT_RESPONSE+1];
-static char *sATBufferCur = NULL;
-
 static const struct timeval TIMEVAL_SIMPOLL = {1,0};
-static const struct timeval TIMEVAL_CALLSTATEPOLL = {0,500000};
 static const struct timeval TIMEVAL_0 = {0,0};
 
 static int s_ims_registered  = 0;        // 0==unregistered
@@ -377,9 +308,6 @@ static int s_cid = 0;
 // STK
 static bool s_stkServiceRunning = false;
 static char *s_stkUnsolResponse = NULL;
-
-// Next available handle for keep alive session
-static uint32_t s_session_handle = 1;
 
 typedef enum {
     STK_UNSOL_EVENT_UNKNOWN,
@@ -436,31 +364,6 @@ static int clccStateToRILState(int state, RIL_CallState *p_state)
         case 4: *p_state = RIL_CALL_INCOMING; return 0;
         case 5: *p_state = RIL_CALL_WAITING;  return 0;
         default: return -1;
-    }
-}
-
-void convertBytesToHexString(char *bin_ptr, int length, unsigned char *hex_ptr) {
-    int i;
-    unsigned char tmp;
-
-    if (bin_ptr == NULL || hex_ptr == NULL) {
-        return;
-    }
-    for (i = 0; i < length; i++) {
-        tmp = (unsigned char)((bin_ptr[i] & 0xf0) >> 4);
-        if (tmp <= 9) {
-            *hex_ptr = (unsigned char)(tmp + '0');
-        } else {
-            *hex_ptr = (unsigned char)(tmp + 'A' - 10);
-        }
-        hex_ptr++;
-        tmp = (unsigned char)(bin_ptr[i] & 0x0f);
-        if (tmp <= 9) {
-            *hex_ptr = (unsigned char)(tmp + '0');
-        } else {
-            *hex_ptr = (unsigned char)(tmp + 'A' - 10);
-        }
-        hex_ptr++;
     }
 }
 
@@ -544,7 +447,6 @@ static int parseSimResponseLine(char* line, RIL_SIM_IO_Response* response) {
     return 0;
 }
 
-#ifdef CUTTLEFISH_ENABLE
 static void set_Ip_Addr(const char *addr, const char* radioInterfaceName) {
   RLOGD("%s %d setting ip addr %s on interface %s", __func__, __LINE__, addr,
         radioInterfaceName);
@@ -578,7 +480,6 @@ static void set_Ip_Addr(const char *addr, const char* radioInterfaceName) {
   free(myaddr);
   RLOGD("%s %d done.", __func__, __LINE__);
 }
-#endif
 
 enum InterfaceState {
     kInterfaceUp,
@@ -698,23 +599,6 @@ static void requestRadioPower(void *data, size_t datalen __unused, RIL_Token t)
 error:
     at_response_free(p_response);
     RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
-}
-
-static void requestShutdown(RIL_Token t)
-{
-    int onOff;
-
-    int err;
-    ATResponse *p_response = NULL;
-
-    if (sState != RADIO_STATE_OFF) {
-        err = at_send_command("AT+CFUN=0", &p_response);
-        setRadioState(RADIO_STATE_UNAVAILABLE);
-    }
-
-    at_response_free(p_response);
-    RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
-    return;
 }
 
 static void requestOrSendDataCallList(int cid, RIL_Token *t);
@@ -1347,37 +1231,6 @@ static int networkModePossible(ModemInfo *mdm, int nm)
     return 0;
 }
 
-int getPreferredFromBitmap(int value, int *index) {
-    for (unsigned int i = 0; i < sizeof(s_networkMask) / sizeof(NetworkTypeBitmap); i++) {
-        if (s_networkMask[i].bitmap == value) {
-            if (index) *index = i;
-            return s_networkMask[i].type;
-        }
-    }
-    // set default value here, since there is no match found
-    // ref.
-    //{LTE | GSM | WCDMA,               MDM_LTE | MDM_GSM | MDM_WCDMA},             // 9 - LTE, GSM/WCDMA
-    //
-    const int DEFAULT_PREFERRED_INDEX = 9;
-    const int DEFAULT_PREFERRED_BITMAP = MDM_LTE | MDM_GSM | MDM_WCDMA;
-    assert(s_networkMask[DEFAULT_PREFERRED_INDEX] == DEFAULT_PREFERRED_BITMAP);
-    if (index) {
-        *index = DEFAULT_PREFERRED_INDEX;
-    }
-    RLOGD("getPreferredFromBitmap %d not match", value);
-    return  DEFAULT_PREFERRED_BITMAP;
-}
-
-unsigned getBitmapFromPreferred(int value) {
-    for (unsigned int i = 0; i < sizeof(s_networkMask) / sizeof(NetworkTypeBitmap); i++) {
-        if (s_networkMask[i].type == value) {
-            return s_networkMask[i].bitmap;
-        }
-    }
-    RLOGD("getBitmapFromPreferred %d not match", value);
-    return  LTE | GSM | WCDMA;
-}
-
 static void requestSetPreferredNetworkType(int request, void *data,
                                            size_t datalen __unused, RIL_Token t )
 {
@@ -1460,30 +1313,6 @@ done:
         i = getBitmapFromPreferred(preferred);
     }
     RIL_onRequestComplete(t, RIL_E_SUCCESS, &i, sizeof(i));
-}
-
-static void requestCdmaPrlVersion(int request __unused, void *data __unused,
-                                   size_t datalen __unused, RIL_Token t)
-{
-    int err;
-    char * responseStr;
-    ATResponse *p_response = NULL;
-    const char *cmd;
-    char *line;
-
-    err = at_send_command_singleline("AT+WPRL?", "+WPRL:", &p_response);
-    if (err < 0 || !p_response->success) goto error;
-    line = p_response->p_intermediates->line;
-    err = at_tok_start(&line);
-    if (err < 0) goto error;
-    err = at_tok_nextstr(&line, &responseStr);
-    if (err < 0 || !responseStr) goto error;
-    RIL_onRequestComplete(t, RIL_E_SUCCESS, responseStr, strlen(responseStr));
-    at_response_free(p_response);
-    return;
-error:
-    at_response_free(p_response);
-    RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
 }
 
 static void requestCdmaBaseBandVersion(int request __unused, void *data __unused,
@@ -2210,65 +2039,6 @@ error2:
     RIL_onRequestComplete(t, RIL_E_SMS_SEND_FAIL_RETRY, &response, sizeof(response));
 }
 
-/**
- * Add for CTS test
- * If open logical channel with AID NULL, this means open logical channel to MF.
- * If there is P2 value, this P2 value is used for SELECT command.
- * In addition, if SELECT command returns 61xx, GET RESPONSE command needs to send to get data.
- */
-static int sendCmdAgainForOpenChannelWithP2( char *data,
-                                        int p2, int *response, int *rspLen) {
-    int len = 0;
-    int err = -1;
-    char *line = NULL;
-    char cmd[64] = {0};
-    RIL_Errno errType = RIL_E_GENERIC_FAILURE;
-    ATResponse *p_response = NULL;
-    RIL_SIM_IO_Response sr;
-
-    memset(&sr, 0, sizeof(sr));
-    sscanf(data, "%2x", &(response[0]));  // response[0] is channel number
-
-    // Send SELECT command to MF
-    snprintf(cmd, sizeof(cmd), "AT+CGLA=%d,14,00A400%02X023F00", response[0],
-             p2);
-
-    err = at_send_command_singleline(cmd, "+CGLA:", &p_response);
-    if (err < 0) goto done;
-    if (p_response->success == 0) {
-        if (!strcmp(p_response->finalResponse, "+CME ERROR: 21") ||
-            !strcmp(p_response->finalResponse, "+CME ERROR: 50")) {
-            errType = RIL_E_GENERIC_FAILURE;
-        }
-        goto done;
-    }
-
-    line = p_response->p_intermediates->line;
-
-    if (at_tok_start(&line) < 0 || at_tok_nextint(&line, &len) < 0 ||
-        at_tok_nextstr(&line, &(sr.simResponse)) < 0) {
-        goto done;
-    }
-
-    sscanf(&(sr.simResponse[len - 4]), "%02x%02x", &(sr.sw1), &(sr.sw2));
-
-    if (sr.sw1 == 0x90 && sr.sw2 == 0x00) {  // 9000 is successful
-        int length = len / 2;
-        for (*rspLen = 1; *rspLen <= length; (*rspLen)++) {
-            sscanf(sr.simResponse, "%02x", &(response[*rspLen]));
-            sr.simResponse += 2;
-        }
-        errType = RIL_E_SUCCESS;
-    } else {  // close channel
-        snprintf(cmd, sizeof(cmd), "AT+CCHC=%d", response[0]);
-        at_send_command( cmd, NULL);
-    }
-
-done:
-    at_response_free(p_response);
-    return errType;
-}
-
 static void requestSimOpenChannel(void *data, size_t datalen, RIL_Token t)
 {
     RIL_UNUSED_PARM(datalen);
@@ -2435,190 +2205,6 @@ static void requestSimTransmitApduChannel(void *data,
     return;
 
 error:
-    RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
-    at_response_free(p_response);
-}
-
-static void requestSimAuthentication(int authContext, char* authData, RIL_Token t) {
-    int err = -1, ret = 0;
-    int status = 0;
-    int binSimResponseLen = 0;
-    char *cmd = NULL;
-    char *line = NULL;
-    // Input data
-    int randLen = 0, autnLen = 0;
-    char *rand = NULL, *autn = NULL;
-    // EAP-SIM response data
-    int kcLen = 0, sresLen = 0;
-    char *kc = NULL, *sres = NULL;
-    // EAP-AKA response data
-    int ckLen = 0, ikLen = 0, resAutsLen = 0;
-    char *ck = NULL, *ik = NULL, *resAuts = NULL;
-    unsigned char *binSimResponse = NULL;
-    unsigned char *binAuthData = NULL;
-    unsigned char *hexAuthData = NULL;
-    ATResponse *p_response = NULL;
-    RIL_SIM_IO_Response response;
-
-    memset(&response, 0, sizeof(response));
-    response.sw1 = 0x90;
-    response.sw2 = 0;
-
-    binAuthData  =
-            (unsigned char *)malloc(sizeof(*binAuthData) * strlen(authData));
-    if (binAuthData == NULL) {
-        goto error;
-    }
-    if(base64_decode(authData, binAuthData) <= 0) {
-        RLOGE("base64_decode failed %s %d", __func__, __LINE__);
-        goto error;
-    }
-    hexAuthData =
-            (unsigned char *)malloc(strlen(authData) * 2 + sizeof(char));
-    if (hexAuthData == NULL) {
-        goto error;
-    }
-    memset(hexAuthData, 0, strlen(authData) * 2 + sizeof(char));
-    convertBytesToHexString((char *)binAuthData, strlen(authData), hexAuthData);
-
-    randLen = binAuthData[0];
-    rand = (char *)malloc(sizeof(char) * (randLen * 2 + sizeof(char)));
-    if (rand == NULL) {
-        goto error;
-    }
-    memcpy(rand, hexAuthData + 2, randLen * 2);
-    memcpy(rand + randLen * 2, "\0", 1);
-
-    if (authContext == AUTH_CONTEXT_EAP_AKA) {
-        // There's the autn value to parse as well.
-        autnLen = binAuthData[1 + randLen];
-        autn = (char*)malloc(sizeof(char) * (autnLen * 2 + sizeof(char)));
-        if (autn == NULL) {
-            goto error;
-        }
-        memcpy(autn, hexAuthData + 2 + randLen * 2 + 2, autnLen * 2);
-        memcpy(autn + autnLen * 2, "\0", 1);
-    }
-
-    if (authContext == AUTH_CONTEXT_EAP_SIM) {
-        ret = asprintf(&cmd, "AT^MBAU=\"%s\"", rand);
-    } else {
-        ret = asprintf(&cmd, "AT^MBAU=\"%s,%s\"", rand, autn);
-    }
-    if (ret < 0) {
-        RLOGE("Failed to asprintf");
-        goto error;
-    }
-    err = at_send_command_singleline( cmd, "^MBAU:", &p_response);
-    free(cmd);
-
-    if (err < 0 || p_response->success == 0) {
-        goto error;
-    }
-    line = p_response->p_intermediates->line;
-    err = at_tok_start(&line);
-    if (err < 0) goto error;
-
-    err = at_tok_nextint(&line, &status);
-    if (err < 0) goto error;
-    if (status != SIM_AUTH_RESPONSE_SUCCESS) {
-        goto error;
-    }
-
-    if (authContext == AUTH_CONTEXT_EAP_SIM) {
-        err = at_tok_nextstr(&line, &kc);
-        if (err < 0) goto error;
-        kcLen = strlen(kc);
-
-        err = at_tok_nextstr(&line, &sres);
-        if (err < 0) goto error;
-        sresLen = strlen(sres);
-
-        // sresLen + sres + kcLen + kc + '\0'
-        binSimResponseLen = (kcLen + sresLen) / 2 + 3 * sizeof(char);
-        binSimResponse = (unsigned char*)malloc(binSimResponseLen + sizeof(char));
-        if (binSimResponse == NULL) goto error;
-        memset(binSimResponse, 0, binSimResponseLen);
-        // set sresLen and sres
-        binSimResponse[0] = (sresLen / 2) & 0xFF;
-        uint8_t* tmpBinSimResponse = convertHexStringToBytes(sres, sresLen);
-        snprintf((char*)(binSimResponse + 1), sresLen / 2, "%s", tmpBinSimResponse);
-        free(tmpBinSimResponse);
-        tmpBinSimResponse = NULL;
-        // set kcLen and kc
-        binSimResponse[1 + sresLen / 2] = (kcLen / 2) & 0xFF;
-        tmpBinSimResponse = convertHexStringToBytes(kc, kcLen);
-        snprintf((char*)(binSimResponse + 1 + sresLen / 2 + 1), kcLen / 2, "%s", tmpBinSimResponse);
-        free(tmpBinSimResponse);
-        tmpBinSimResponse = NULL;
-    } else {  // AUTH_CONTEXT_EAP_AKA
-        err = at_tok_nextstr(&line, &ck);
-        if (err < 0) goto error;
-        ckLen = strlen(ck);
-
-        err = at_tok_nextstr(&line, &ik);
-        if (err < 0) goto error;
-        ikLen = strlen(ik);
-
-        err = at_tok_nextstr(&line, &resAuts);
-        if (err < 0) goto error;
-        resAutsLen = strlen(resAuts);
-
-        // 0xDB + ckLen + ck + ikLen + ik + resAutsLen + resAuts + '\0'
-        binSimResponseLen = (ckLen + ikLen + resAutsLen) / 2 + 5 * sizeof(char);
-        binSimResponse = (unsigned char*)malloc(binSimResponseLen + sizeof(char));
-        if (binSimResponse == NULL) goto error;
-        memset(binSimResponse, 0, binSimResponseLen);
-        // The DB prefix indicates successful auth. Not produced by the SIM.
-        binSimResponse[0] = 0xDB;
-        // Set ckLen and ck
-        binSimResponse[1] = (ckLen / 2) & 0xFF;
-        uint8_t* tmpBinSimResponse = convertHexStringToBytes(ck, ckLen);
-        snprintf((char*)(binSimResponse + 2), ckLen / 2 + 1, "%s", tmpBinSimResponse);
-        free(tmpBinSimResponse);
-        tmpBinSimResponse = NULL;
-        // Set ikLen and ik
-        binSimResponse[2 + ckLen / 2] = (ikLen / 2) & 0xFF;
-        tmpBinSimResponse = convertHexStringToBytes(ik, ikLen);
-        snprintf((char*)(binSimResponse + 2 + ckLen / 2 + 1), ikLen / 2 + 1, "%s",
-                 tmpBinSimResponse);
-        free(tmpBinSimResponse);
-        tmpBinSimResponse = NULL;
-        // Set resAutsLen and resAuts
-        binSimResponse[2 + ckLen / 2 + 1 + ikLen / 2] = (resAutsLen / 2) & 0xFF;
-        tmpBinSimResponse = convertHexStringToBytes(resAuts, resAutsLen);
-        snprintf((char*)(binSimResponse + 2 + ckLen / 2 + 1 + ikLen / 2 + 1), resAutsLen / 2 + 1,
-                 "%s", tmpBinSimResponse);
-        free(tmpBinSimResponse);
-        tmpBinSimResponse = NULL;
-    }
-
-    response.simResponse = (char*)malloc(2 * binSimResponseLen + sizeof(char));
-    if (response.simResponse == NULL) goto error;
-    if (NULL == base64_encode(binSimResponse, response.simResponse, binSimResponseLen - 1)) {
-        RLOGE("Failed to call base64_encode %s %d", __func__, __LINE__);
-        goto error;
-    }
-
-    RIL_onRequestComplete(t, RIL_E_SUCCESS, &response, sizeof(response));
-    at_response_free(p_response);
-
-    free(binAuthData);
-    free(hexAuthData);
-    free(rand);
-    free(autn);
-    free(response.simResponse);
-    free(binSimResponse);
-    return;
-
-error:
-    free(binAuthData);
-    free(hexAuthData);
-    free(rand);
-    free(autn);
-    free(response.simResponse);
-    free(binSimResponse);
-
     RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
     at_response_free(p_response);
 }
@@ -2921,61 +2507,6 @@ void convertBytesToHex(uint8_t *bytes, int length, uint8_t *hex_str) {
 #define USIM_DATA_OFFSET_3                      3
 #define USIM_FILE_DES_TAG                       0x82
 #define USIM_FILE_SIZE_TAG                      0x80
-
-bool convertUsimToSim(uint8_t *byteUSIM, int len, uint8_t *hexSIM) {
-    int desIndex = 0;
-    int sizeIndex = 0;
-    int i = 0;
-    uint8_t byteSIM[RESPONSE_EF_SIZE] = {0};
-    for (i = 0; i < len; i++) {
-        if (byteUSIM[i] == USIM_FILE_DES_TAG) {
-            desIndex = i;
-            break;
-        }
-    }
-    for (i = desIndex; i < len;) {
-        if (byteUSIM[i] == USIM_FILE_SIZE_TAG) {
-            sizeIndex = i;
-            break;
-        } else {
-            i += (byteUSIM[i + 1] + 2);
-        }
-    }
-    byteSIM[RESPONSE_DATA_FILE_SIZE_1] =
-            byteUSIM[sizeIndex + USIM_DATA_OFFSET_2];
-    byteSIM[RESPONSE_DATA_FILE_SIZE_2] =
-            byteUSIM[sizeIndex + USIM_DATA_OFFSET_3];
-    byteSIM[RESPONSE_DATA_FILE_TYPE] = TYPE_EF;
-    if ((byteUSIM[desIndex + RESPONSE_DATA_FILE_DES_FLAG] & 0x07) ==
-        EF_TYPE_TRANSPARENT) {
-        byteSIM[RESPONSE_DATA_STRUCTURE] = 0;
-    } else if ((byteUSIM[desIndex + RESPONSE_DATA_FILE_DES_FLAG] & 0x07) ==
-                EF_TYPE_LINEAR_FIXED) {
-        if (USIM_FILE_DES_TAG != byteUSIM[RESPONSE_DATA_FILE_DES_FLAG]) {
-            RLOGE("USIM_FILE_DES_TAG != ...");
-            goto error;
-        }
-        if (TYPE_FILE_DES_LEN != byteUSIM[RESPONSE_DATA_FILE_DES_LEN_FLAG]) {
-            goto error;
-        }
-        byteSIM[RESPONSE_DATA_STRUCTURE] = 1;
-        byteSIM[RESPONSE_DATA_RECORD_LENGTH] =
-                ((byteUSIM[RESPONSE_DATA_FILE_RECORD_LEN_1] & 0xff) << 8) +
-                (byteUSIM[RESPONSE_DATA_FILE_RECORD_LEN_2] & 0xff);
-    } else if ((byteUSIM[desIndex + RESPONSE_DATA_FILE_DES_FLAG] & 0x07) ==
-                EF_TYPE_CYCLIC) {
-        byteSIM[RESPONSE_DATA_STRUCTURE] = 3;
-        byteSIM[RESPONSE_DATA_RECORD_LENGTH] =
-                ((byteUSIM[RESPONSE_DATA_FILE_RECORD_LEN_1] & 0xff) << 8) +
-                (byteUSIM[RESPONSE_DATA_FILE_RECORD_LEN_2] & 0xff);
-    }
-
-    convertBytesToHex(byteSIM, RESPONSE_EF_SIZE, hexSIM);
-    return true;
-
-error:
-    return false;
-}
 
 static void  requestSIM_IO(void *data, size_t datalen __unused, RIL_Token t)
 {
@@ -3289,20 +2820,6 @@ static void requestSetCellInfoListRate(void *data, size_t datalen __unused, RIL_
     RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
 }
 
-static void requestGetHardwareConfig(void *data, size_t datalen, RIL_Token t)
-{
-   // TODO - hook this up with real query/info from radio.
-
-   RIL_HardwareConfig hwCfg;
-
-   RIL_UNUSED_PARM(data);
-   RIL_UNUSED_PARM(datalen);
-
-   hwCfg.type = -1;
-
-   RIL_onRequestComplete(t, RIL_E_SUCCESS, &hwCfg, sizeof(hwCfg));
-}
-
 static void requestGetTtyMode(void *data, size_t datalen, RIL_Token t)
 {
    int  ttyModeResponse;
@@ -3314,35 +2831,6 @@ static void requestGetTtyMode(void *data, size_t datalen, RIL_Token t)
                                                    : 0; // TTY Off
 
    RIL_onRequestComplete(t, RIL_E_SUCCESS, &ttyModeResponse, sizeof(ttyModeResponse));
-}
-
-static void requestGetRadioCapability(void *data, size_t datalen, RIL_Token t)
-{
-   RIL_RadioCapability radioCapability;
-
-   RIL_UNUSED_PARM(data);
-   RIL_UNUSED_PARM(datalen);
-
-   radioCapability.version = RIL_RADIO_CAPABILITY_VERSION;
-   radioCapability.session = 0;
-   radioCapability.phase   = 0;
-   radioCapability.rat     = NR | LTE | WCDMA | GSM;
-   strncpy(radioCapability.logicalModemUuid, "com.android.modem.simulator", MAX_UUID_LENGTH);
-   radioCapability.status  = RC_STATUS_SUCCESS;
-
-   RIL_onRequestComplete(t, RIL_E_SUCCESS, &radioCapability, sizeof(radioCapability));
-}
-
-static void requestSetRadioCapability(void *data, size_t datalen, RIL_Token t)
-{
-  RIL_RadioCapability* rc = (RIL_RadioCapability*)data;
-  RLOGV(
-      "RadioCapability version %d session %d phase %d rat %d "
-      "logicalModemUuid %s status %d",
-      rc->version, rc->session, rc->phase, rc->rat, rc->logicalModemUuid,
-      rc->status);
-  // TODO(ender): do something about these numbers.
-  RIL_onRequestComplete(t, RIL_E_SUCCESS, rc, datalen);
 }
 
 static void requestGetMute(void *data, size_t datalen, RIL_Token t)
@@ -4038,38 +3526,6 @@ error:
     RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
 }
 
-/**
- * <AcT>: integer type; access technology selected
- * 0 GSM
- * 1 GSM Compact
- * 2 UTRAN
- * 3 GSM w/EGPRS (see NOTE 1)
- * 4 UTRAN w/HSDPA (see NOTE 2)
- * 5 UTRAN w/HSUPA (see NOTE 2)
- * 6 UTRAN w/HSDPA and HSUPA (see NOTE 2)
- * 7 E-UTRAN
- * 8 EC-GSM-IoT (A/Gb mode) (see NOTE 3)
- * 9 E-UTRAN (NB-S1 mode) (see NOTE 4)
- * 10  E-UTRA connected to a 5GCN (see NOTE 5)
- * 11  NR connected to a 5GCN (see NOTE 5)
- * 12  NG-RAN
- * 13  E-UTRA-NR dual connectivity (see NOTE 6)
- */
-int mapRadioAccessNetworkToTech(RIL_RadioAccessNetworks network) {
-    switch (network) {
-        case GERAN:  // GSM EDGE
-            return 3;
-        case UTRAN:
-            return 6;
-        case EUTRAN:
-            return 7;
-        case NGRAN:
-            return 11;
-        default:
-            return 7;  // LTE
-    }
-}
-
 static void requestSetNetworlSelectionManual(void *data, RIL_Token t) {
     int err = -1;
     char cmd[64] = {0};
@@ -4230,65 +3686,6 @@ error:
     RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
 }
 
-static void requestStartKeepalive(RIL_Token t) {
-    RIL_KeepaliveStatus resp;
-    resp.sessionHandle = s_session_handle++;
-    resp.code = KEEPALIVE_ACTIVE;
-    RIL_onRequestComplete(t, RIL_E_SUCCESS, &resp, sizeof(resp));
-}
-
-void getConfigSlotStatus(RIL_SimSlotStatus_V1_2 *pSimSlotStatus) {
-    if (pSimSlotStatus == NULL) {
-        return;
-    }
-    if (getSIMStatus() == SIM_ABSENT) {
-        pSimSlotStatus->base.cardState = RIL_CARDSTATE_ABSENT;
-    } else {
-        pSimSlotStatus->base.cardState = RIL_CARDSTATE_PRESENT;
-    }
-    // TODO: slot state is always active now
-    pSimSlotStatus->base.slotState = SLOT_STATE_ACTIVE;
-
-    if (pSimSlotStatus->base.cardState != RIL_CARDSTATE_ABSENT) {
-        pSimSlotStatus->base.atr = "";
-        pSimSlotStatus->base.iccid = (char *)calloc(64, sizeof(char));
-        getIccId(pSimSlotStatus->base.iccid, 64);
-    }
-
-    pSimSlotStatus->base.logicalSlotId = 0;
-    pSimSlotStatus->eid = "";
-}
-
-void sendUnsolNetworkScanResult() {
-    RIL_NetworkScanResult scanr;
-    memset(&scanr, 0, sizeof(scanr));
-    scanr.status = COMPLETE;
-    scanr.error = RIL_E_SUCCESS;
-    scanr.network_infos = NULL;
-    scanr.network_infos_length = 0;
-    RIL_onUnsolicitedResponse(RIL_UNSOL_NETWORK_SCAN_RESULT, &scanr, sizeof(scanr));
-}
-
-void onIccSlotStatus(RIL_Token t) {
-    RIL_SimSlotStatus_V1_2 *pSimSlotStatusList =
-        (RIL_SimSlotStatus_V1_2 *)calloc(SIM_COUNT, sizeof(RIL_SimSlotStatus_V1_2));
-
-    getConfigSlotStatus(pSimSlotStatusList);
-
-    if (t == NULL) {
-        RIL_onUnsolicitedResponse(RIL_UNSOL_CONFIG_ICC_SLOT_STATUS, pSimSlotStatusList,
-                 SIM_COUNT * sizeof(RIL_SimSlotStatus_V1_2));
-    } else {
-        RIL_onRequestComplete(t, RIL_E_SUCCESS, pSimSlotStatusList,
-                SIM_COUNT * sizeof(RIL_SimSlotStatus_V1_2));
-    }
-
-    if (pSimSlotStatusList != NULL) {
-        free(pSimSlotStatusList->base.iccid);
-        free(pSimSlotStatusList);
-    }
-}
-
 /*** Callback methods from the RIL library to us ***/
 
 /**
@@ -4336,27 +3733,22 @@ onRequest (int request, void *data, size_t datalen, RIL_Token t)
             case RIL_REQUEST_DEVICE_IDENTITY:
             case RIL_REQUEST_EXIT_EMERGENCY_CALLBACK_MODE:
             case RIL_REQUEST_GET_ACTIVITY_INFO:
-            case RIL_REQUEST_GET_CARRIER_RESTRICTIONS:
             case RIL_REQUEST_GET_CURRENT_CALLS:
             case RIL_REQUEST_GET_IMEI:
             case RIL_REQUEST_GET_MUTE:
             case RIL_REQUEST_SET_MUTE:
             case RIL_REQUEST_GET_NEIGHBORING_CELL_IDS:
             case RIL_REQUEST_GET_PREFERRED_NETWORK_TYPE:
-            case RIL_REQUEST_GET_RADIO_CAPABILITY:
             case RIL_REQUEST_GET_SIM_STATUS:
-            case RIL_REQUEST_NV_RESET_CONFIG:
             case RIL_REQUEST_QUERY_AVAILABLE_BAND_MODE:
             case RIL_REQUEST_QUERY_NETWORK_SELECTION_MODE:
             case RIL_REQUEST_QUERY_TTY_MODE:
             case RIL_REQUEST_RADIO_POWER:
             case RIL_REQUEST_SET_BAND_MODE:
-            case RIL_REQUEST_SET_CARRIER_RESTRICTIONS:
             case RIL_REQUEST_SET_LOCATION_UPDATES:
             case RIL_REQUEST_SET_PREFERRED_NETWORK_TYPE:
             case RIL_REQUEST_SET_TTY_MODE:
             case RIL_REQUEST_SET_UNSOL_CELL_INFO_LIST_RATE:
-            case RIL_REQUEST_STOP_LCE:
             case RIL_REQUEST_VOICE_RADIO_TECH:
             case RIL_REQUEST_SCREEN_STATE:
                 // Process all the above, even though the radio is off
@@ -4482,17 +3874,6 @@ onRequest (int request, void *data, size_t datalen, RIL_Token t)
         case RIL_REQUEST_SIM_TRANSMIT_APDU_CHANNEL:
             requestSimTransmitApduChannel(data, datalen, t);
             break;
-        case RIL_REQUEST_SIM_AUTHENTICATION: {
-            RIL_SimAuthentication *sim_auth = (RIL_SimAuthentication *)data;
-            if ((sim_auth->authContext == AUTH_CONTEXT_EAP_SIM ||
-                 sim_auth->authContext == AUTH_CONTEXT_EAP_AKA) &&
-                sim_auth->authData != NULL) {
-                requestSimAuthentication(sim_auth->authContext, sim_auth->authData, t);
-            } else {
-                RIL_onRequestComplete(t, RIL_E_INVALID_ARGUMENTS, NULL, 0);
-            }
-            break;
-        }
         case RIL_REQUEST_SIM_TRANSMIT_APDU_BASIC:
             requestTransmitApduBasic(data, datalen, t);
             break;
@@ -4688,24 +4069,8 @@ onRequest (int request, void *data, size_t datalen, RIL_Token t)
             requestSetCellInfoListRate(data, datalen, t);
             break;
 
-        case RIL_REQUEST_GET_HARDWARE_CONFIG:
-            requestGetHardwareConfig(data, datalen, t);
-            break;
-
-        case RIL_REQUEST_SHUTDOWN:
-            requestShutdown(t);
-            break;
-
         case RIL_REQUEST_QUERY_TTY_MODE:
             requestGetTtyMode(data, datalen, t);
-            break;
-
-        case RIL_REQUEST_GET_RADIO_CAPABILITY:
-            requestGetRadioCapability(data, datalen, t);
-            break;
-
-        case RIL_REQUEST_SET_RADIO_CAPABILITY:
-            requestSetRadioCapability(data, datalen, t);
             break;
 
         case RIL_REQUEST_GET_MUTE:
@@ -4751,16 +4116,6 @@ onRequest (int request, void *data, size_t datalen, RIL_Token t)
 
         case RIL_REQUEST_CDMA_GET_SUBSCRIPTION_SOURCE:
             requestCdmaGetSubscriptionSource(request, data, datalen, t);
-            break;
-
-        case RIL_REQUEST_START_LCE:
-        case RIL_REQUEST_STOP_LCE:
-        case RIL_REQUEST_PULL_LCEDATA:
-            if (getSIMStatus() == SIM_ABSENT) {
-                RIL_onRequestComplete(t, RIL_E_SIM_ABSENT, NULL, 0);
-            } else {
-                RIL_onRequestComplete(t, RIL_E_LCE_NOT_SUPPORTED, NULL, 0);
-            }
             break;
 
         case RIL_REQUEST_CDMA_QUERY_ROAMING_PREFERENCE:
@@ -4888,107 +4243,11 @@ onRequest (int request, void *data, size_t datalen, RIL_Token t)
             requestStksendTerminalResponse(data, t);
             break;
 
-        // New requests after P.
-        case RIL_REQUEST_START_NETWORK_SCAN:
-            RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
-            // send unsol network scan results after a short while
-            RIL_requestTimedCallback (sendUnsolNetworkScanResult, NULL, &TIMEVAL_SIMPOLL);
-            break;
-        case RIL_REQUEST_GET_MODEM_STACK_STATUS:
-            RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
-            break;
         case RIL_REQUEST_ENABLE_MODEM:
             RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
             break;
         case RIL_REQUEST_EMERGENCY_DIAL:
             requestEccDial(data, t);
-            break;
-        case RIL_REQUEST_SET_SIM_CARD_POWER:
-            RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
-            break;
-        case RIL_REQUEST_SET_PREFERRED_NETWORK_TYPE_BITMAP:
-            requestSetPreferredNetworkType(request, data, datalen, t);
-            break;
-        case RIL_REQUEST_SET_ALLOWED_NETWORK_TYPES_BITMAP:
-            requestSetPreferredNetworkType(request, data, datalen, t);
-            break;
-        case RIL_REQUEST_GET_ALLOWED_NETWORK_TYPES_BITMAP:
-            requestGetPreferredNetworkType(request, data, datalen, t);
-        case RIL_REQUEST_ENABLE_NR_DUAL_CONNECTIVITY:
-            if (data == NULL || datalen != sizeof(int)) {
-                RIL_onRequestComplete(t, RIL_E_INTERNAL_ERR, NULL, 0);
-                break;
-            }
-            int nrDualConnectivityState = *(int *)(data);
-            isNrDualConnectivityEnabled = (nrDualConnectivityState == 1) ? true : false;
-            RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
-            break;
-        case RIL_REQUEST_IS_NR_DUAL_CONNECTIVITY_ENABLED:
-            RIL_onRequestComplete(t, RIL_E_SUCCESS, &isNrDualConnectivityEnabled,
-                    sizeof(isNrDualConnectivityEnabled));
-            break;
-        case RIL_REQUEST_GET_PREFERRED_NETWORK_TYPE_BITMAP:
-            requestGetPreferredNetworkType(request, data, datalen, t);
-            break;
-        case RIL_REQUEST_SET_SYSTEM_SELECTION_CHANNELS:
-            RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
-            break;
-        case RIL_REQUEST_GET_SLICING_CONFIG:
-            RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
-            break;
-
-        // Radio config requests
-        case RIL_REQUEST_CONFIG_GET_SLOT_STATUS:
-            RIL_requestTimedCallback(onIccSlotStatus, (void *)t, NULL);
-            break;
-        case RIL_REQUEST_CONFIG_SET_SLOT_MAPPING:
-            RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
-            break;
-        case RIL_REQUEST_CONFIG_GET_PHONE_CAPABILITY: {
-            RIL_PhoneCapability *phoneCapability =
-                    (RIL_PhoneCapability *)alloca(sizeof(RIL_PhoneCapability));
-            phoneCapability->maxActiveData = 1;
-            // DSDS is 1, and DSDA is 2, now only support DSDS
-            phoneCapability->maxActiveInternetData = 1;
-            // DSDA can support internet lingering
-            phoneCapability->isInternetLingeringSupported = false;
-            for (int num = 0; num < SIM_COUNT; num++) {
-                phoneCapability->logicalModemList[num].modemId = num;
-            }
-            RIL_onRequestComplete(t, RIL_E_SUCCESS,
-                            phoneCapability, sizeof(RIL_PhoneCapability));
-            break;
-        }
-        case RIL_REQUEST_CONFIG_SET_MODEM_CONFIG: {
-            RIL_ModemConfig *mdConfig = (RIL_ModemConfig*)(data);
-            if (mdConfig == NULL || mdConfig->numOfLiveModems != 1) {
-                RIL_onRequestComplete(t, RIL_E_INVALID_ARGUMENTS, NULL, 0);
-            } else {
-                RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
-            }
-            break;
-        }
-        case RIL_REQUEST_CONFIG_GET_MODEM_CONFIG: {
-            RIL_ModemConfig mdConfig;
-            mdConfig.numOfLiveModems = 1;
-
-            RIL_onRequestComplete(t, RIL_E_SUCCESS, &mdConfig, sizeof(RIL_ModemConfig));
-            break;
-        }
-        case RIL_REQUEST_CONFIG_SET_PREFER_DATA_MODEM: {
-            int *modemId = (int*)(data);
-            if (modemId == NULL || *modemId != 0) {
-                RIL_onRequestComplete(t, RIL_E_INVALID_ARGUMENTS, NULL, 0);
-            } else {
-                RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
-            }
-            break;
-        }
-        case RIL_REQUEST_SET_SIGNAL_STRENGTH_REPORTING_CRITERIA:
-            RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
-            break;
-        case RIL_REQUEST_SET_LINK_CAPACITY_REPORTING_CRITERIA:
-            RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
             break;
         case RIL_REQUEST_ENABLE_UICC_APPLICATIONS: {
             if (data == NULL || datalen != sizeof(int)) {
@@ -4999,25 +4258,6 @@ onRequest (int request, void *data, size_t datalen, RIL_Token t)
             RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
             break;
         }
-        case RIL_REQUEST_ARE_UICC_APPLICATIONS_ENABLED:
-            RIL_onRequestComplete(t, RIL_E_SUCCESS, &areUiccApplicationsEnabled,
-                    sizeof(areUiccApplicationsEnabled));
-            break;
-        case RIL_REQUEST_CDMA_SEND_SMS_EXPECT_MORE:
-            RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
-            break;
-        case RIL_REQUEST_GET_BARRING_INFO:
-            RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
-            break;
-        case RIL_REQUEST_SET_DATA_THROTTLING:
-            RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
-            break;
-        case RIL_REQUEST_START_KEEPALIVE:
-            requestStartKeepalive(t);
-            break;
-        case RIL_REQUEST_STOP_KEEPALIVE:
-            RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
-            break;
         default:
             RLOGD("Request not supported. Tech: %d",TECH(sMdmInfo));
             RIL_onRequestComplete(t, RIL_E_REQUEST_NOT_SUPPORTED, NULL, 0);
@@ -5125,83 +4365,6 @@ setRadioState(RIL_RadioState newState)
             onRadioPowerOn();
         }
     }
-}
-
-/** Returns RUIM_NOT_READY on error */
-static SIM_Status
-getRUIMStatus()
-{
-    ATResponse *p_response = NULL;
-    int err;
-    int ret;
-    char *cpinLine;
-    char *cpinResult;
-
-    if (sState == RADIO_STATE_OFF || sState == RADIO_STATE_UNAVAILABLE) {
-        ret = SIM_NOT_READY;
-        goto done;
-    }
-
-    err = at_send_command_singleline("AT+CPIN?", "+CPIN:", &p_response);
-
-    if (err != 0) {
-        ret = SIM_NOT_READY;
-        goto done;
-    }
-
-    switch (at_get_cme_error(p_response)) {
-        case CME_SUCCESS:
-            break;
-
-        case CME_SIM_NOT_INSERTED:
-            ret = SIM_ABSENT;
-            goto done;
-
-        default:
-            ret = SIM_NOT_READY;
-            goto done;
-    }
-
-    /* CPIN? has succeeded, now look at the result */
-
-    cpinLine = p_response->p_intermediates->line;
-    err = at_tok_start (&cpinLine);
-
-    if (err < 0) {
-        ret = SIM_NOT_READY;
-        goto done;
-    }
-
-    err = at_tok_nextstr(&cpinLine, &cpinResult);
-
-    if (err < 0) {
-        ret = SIM_NOT_READY;
-        goto done;
-    }
-
-    if (0 == strcmp (cpinResult, "SIM PIN")) {
-        ret = SIM_PIN;
-        goto done;
-    } else if (0 == strcmp (cpinResult, "SIM PUK")) {
-        ret = SIM_PUK;
-        goto done;
-    } else if (0 == strcmp (cpinResult, "PH-NET PIN")) {
-        return SIM_NETWORK_PERSONALIZATION;
-    } else if (0 != strcmp (cpinResult, "READY"))  {
-        /* we're treating unsupported lock types as "sim absent" */
-        ret = SIM_ABSENT;
-        goto done;
-    }
-
-    at_response_free(p_response);
-    p_response = NULL;
-    cpinResult = NULL;
-
-    ret = SIM_READY;
-
-done:
-    at_response_free(p_response);
-    return ret;
 }
 
 /** Returns SIM_NOT_READY on error */
@@ -5751,18 +4914,6 @@ static void waitForClose()
     pthread_mutex_unlock(&s_state_mutex);
 }
 
-static void sendUnsolImsNetworkStateChanged()
-{
-#if 0 // to be used when unsol is changed to return data.
-    int reply[2];
-    reply[0] = s_ims_registered;
-    reply[1] = s_ims_services;
-    reply[1] = s_ims_format;
-#endif
-    RIL_onUnsolicitedResponse(RIL_UNSOL_RESPONSE_IMS_NETWORK_STATE_CHANGED,
-            NULL, 0);
-}
-
 static int parseProactiveCmdInd(char *response) {
     int typePos = 0;
     int cmdType = 0;
@@ -6086,24 +5237,6 @@ static void onATTimeout()
     /* FIXME cause a radio reset here */
 
     setRadioState (RADIO_STATE_UNAVAILABLE);
-}
-
-/* Called to pass hardware configuration information to telephony
- * framework.
- */
-static void setHardwareConfiguration(int num, RIL_HardwareConfig *cfg)
-{
-   RIL_onUnsolicitedResponse(RIL_UNSOL_HARDWARE_CONFIG_CHANGED, cfg, num*sizeof(*cfg));
-}
-
-static void usage(char *s __unused)
-{
-#ifdef RIL_SHLIB
-    fprintf(stderr, "reference-ril requires: -p <tcp port> or -d /dev/tty_device\n");
-#else
-    fprintf(stderr, "usage: %s [-p <tcp port>] [-d /dev/tty_device]\n", s);
-    exit(-1);
-#endif
 }
 
 static void *
