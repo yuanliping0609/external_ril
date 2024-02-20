@@ -249,6 +249,7 @@ static int responseSetupDataCall(Parcel &p, void *response, size_t responselen);
 static int responseRaw(Parcel &p, void *response, size_t responselen);
 static int responseSsn(Parcel &p, void *response, size_t responselen);
 static int responseSimStatus(Parcel &p, void *response, size_t responselen);
+static int responseImsStatus(Parcel &p, void *response, size_t responselen);
 static int responseGsmBrSmsCnf(Parcel &p, void *response, size_t responselen);
 static int responseCdmaBrSmsCnf(Parcel &p, void *response, size_t responselen);
 static int responseCdmaSms(Parcel &p, void *response, size_t responselen);
@@ -280,8 +281,23 @@ static CommandInfo s_commands[] = {
 #include "ril_commands.h"
 };
 
+/** Index == requestNumber */
+static CommandInfo s_second_commands[] = {
+#include "ril_second_commands.h"
+};
+
+/** Index == requestNumber */
+static CommandInfo s_ims_commands[] = {
+#include "ril_ims_commands.h"
+};
+
 static UnsolResponseInfo s_unsolResponses[] = {
 #include "ril_unsol_commands.h"
+};
+
+/** Index == requestNumber */
+static CommandInfo s_cus_commands[] = {
+#include "ril_cus_commands.h"
 };
 
 /* For older RILs that do not support new commands RIL_REQUEST_VOICE_RADIO_TECH and
@@ -350,8 +366,16 @@ processCommandBuffer(void *buffer, size_t buflen) {
         return 0;
     }
 
-    if (request < 1 || request >= (int32_t)NUM_ELEMS(s_commands)) {
+    if (request < 1 ||
+        (request >= (int32_t)NUM_ELEMS(s_commands)
+            && request <= RIL_SECOND_REQUEST_BASE) ||
+        (request >= RIL_SECOND_REQUEST_BASE + (int32_t)NUM_ELEMS(s_second_commands)
+            && request <= RIL_IMS_REQUEST_BASE) ||
+        (request >= RIL_IMS_REQUEST_BASE + (int32_t)NUM_ELEMS(s_ims_commands)
+            && request <= RIL_CUS_REQUEST_BASE) ||
+        request >= RIL_CUS_REQUEST_BASE + (int32_t)NUM_ELEMS(s_cus_commands)) {
         Parcel pErr;
+        RLOGD("unsupported request code %ld token %ld", request, token);
         // FIXME this should perhaps return a response
         pErr.writeInt32 (RESPONSE_SOLICITED);
         pErr.writeInt32 (token);
@@ -368,7 +392,21 @@ processCommandBuffer(void *buffer, size_t buflen) {
     }
 
     pRI->token = token;
-    pRI->pCI = &(s_commands[request]);
+    if (request > 0 && request < (int32_t)NUM_ELEMS(s_commands)) {
+        pRI->pCI = &(s_commands[request]);
+    } else if (request > RIL_SECOND_REQUEST_BASE
+        && request < RIL_SECOND_REQUEST_BASE + (int32_t)NUM_ELEMS(s_second_commands)) {
+        request = request - RIL_SECOND_REQUEST_BASE;
+        pRI->pCI = &(s_second_commands[request]);
+    } else if (request > RIL_IMS_REQUEST_BASE
+        && request < RIL_IMS_REQUEST_BASE + (int32_t)NUM_ELEMS(s_ims_commands)) {
+        request = request - RIL_IMS_REQUEST_BASE;
+        pRI->pCI = &(s_ims_commands[request]);
+    } else if (request > RIL_CUS_REQUEST_BASE
+        && request < RIL_CUS_REQUEST_BASE + (int32_t)NUM_ELEMS(s_cus_commands)) {
+        request = request - RIL_CUS_REQUEST_BASE;
+        pRI->pCI = &(s_cus_commands[request]);
+    }
 
     ret = pthread_mutex_lock(&s_pendingRequestsMutex);
     assert (ret == 0);
@@ -2653,6 +2691,19 @@ static int responseSimStatus(Parcel &p, void *response, size_t responselen) {
     return 0;
 }
 
+static int responseImsStatus(Parcel &p, void *response, size_t responselen)
+{
+    RIL_IMS_REGISTRATION_STATE_RESPONSE *p_cur = NULL;
+
+    p_cur = ((RIL_IMS_REGISTRATION_STATE_RESPONSE *)response);
+
+    p.writeInt32(p_cur->reg_state);
+    p.writeInt32(p_cur->service_type);
+    writeStringToParcel(p, (const char *)p_cur->uri_response);
+
+    return 0;
+}
+
 static int responseGsmBrSmsCnf(Parcel &p, void *response, size_t responselen) {
     int num = responselen / sizeof(RIL_GSM_BroadcastSmsConfigInfo *);
     p.writeInt32(num);
@@ -3002,6 +3053,19 @@ RIL_register (const RIL_RadioFunctions *callbacks) {
 
     for (int i = 0; i < (int)NUM_ELEMS(s_commands); i++) {
         assert(i == s_commands[i].requestNumber);
+    }
+
+    for (int i = 1; i < (int)NUM_ELEMS(s_second_commands); i++) {
+        assert(i == (s_second_commands[i].requestNumber - RIL_SECOND_REQUEST_BASE));
+    }
+
+    // check ims
+    for (int i = 1; i < (int)NUM_ELEMS(s_ims_commands); i++) {
+        assert(i == (s_ims_commands[i].requestNumber - RIL_IMS_REQUEST_BASE));
+    }
+
+    for (int i = 1; i < (int)NUM_ELEMS(s_cus_commands); i++) {
+        assert(i == (s_cus_commands[i].requestNumber - RIL_CUS_REQUEST_BASE));
     }
 
     for (int i = 0; i < (int)NUM_ELEMS(s_unsolResponses); i++) {
@@ -3662,6 +3726,8 @@ requestToString(int request) {
         case RIL_REQUEST_GET_MODEM_STATUS: return "GET_MODEM_STATUS";
         case RIL_REQUEST_EMERGENCY_DIAL: return "EMERGENCY_DIAL";
         case RIL_REQUEST_ENABLE_MODEM: return "RIL_REQUEST_ENABLE_MODEM";
+        case RIL_REQUEST_IMS_REG_STATE_CHANGE: return "IMS_REG_STATE_CHANGE";
+        case RIL_REQUEST_IMS_SET_SERVICE_STATUS: return "IMS_SET_SERVICE_STATUS";
         case RIL_UNSOL_RESPONSE_RADIO_STATE_CHANGED: return "UNSOL_RESPONSE_RADIO_STATE_CHANGED";
         case RIL_UNSOL_RESPONSE_CALL_STATE_CHANGED: return "UNSOL_RESPONSE_CALL_STATE_CHANGED";
         case RIL_UNSOL_RESPONSE_VOICE_NETWORK_STATE_CHANGED: return "UNSOL_RESPONSE_VOICE_NETWORK_STATE_CHANGED";

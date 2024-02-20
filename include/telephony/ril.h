@@ -1072,6 +1072,12 @@ typedef struct {
     int             number_plan;        /* 0=Unknown, 1=ISDN, 3=Data, 4=Telex, 8=Nat'l, 9=Private */
 } RIL_CDMA_CallWaiting_v6;
 
+typedef struct {
+    int reg_state;
+    int service_type;
+    char *uri_response;
+} RIL_IMS_REGISTRATION_STATE_RESPONSE;
+
 /**
  * Which types of Cell Broadcast Message (CBM) are to be received by the ME
  *
@@ -5161,38 +5167,6 @@ typedef struct {
 #define RIL_REQUEST_SET_INITIAL_ATTACH_APN 111
 
 /**
- * RIL_REQUEST_IMS_REGISTRATION_STATE
- *
- * This message is DEPRECATED and shall be removed in a future release (target: 2018);
- * instead, provide IMS registration status via an IMS Service.
- *
- * Request current IMS registration state
- *
- * "data" is NULL
- *
- * "response" is int *
- * ((int *)response)[0] is registration state:
- *              0 - Not registered
- *              1 - Registered
- *
- * If ((int*)response)[0] is = 1, then ((int *) response)[1]
- * must follow with IMS SMS format:
- *
- * ((int *) response)[1] is of type RIL_RadioTechnologyFamily
- *
- * Valid errors:
- *  SUCCESS
- *  RADIO_NOT_AVAILABLE
- *  INTERNAL_ERR
- *  NO_MEMORY
- *  NO_RESOURCES
- *  CANCELLED
- *  INVALID_MODEM_STATE
- *  REQUEST_NOT_SUPPORTED
- */
-#define RIL_REQUEST_IMS_REGISTRATION_STATE 112
-
-/**
  * RIL_REQUEST_IMS_SEND_SMS
  *
  * Send a SMS message over IMS
@@ -5422,6 +5396,9 @@ typedef struct {
  */
 #define RIL_REQUEST_GET_MODEM_STATUS 147
 
+// SECOND STEP BASE
+#define RIL_SECOND_REQUEST_BASE 200
+
 /**
  * RIL_REQUEST_EMERGENCY_DIAL
  *
@@ -5472,7 +5449,7 @@ typedef struct {
  *  ABORTED
  *  INVALID_MODEM_STATE
  */
-#define RIL_REQUEST_EMERGENCY_DIAL 149
+#define RIL_REQUEST_EMERGENCY_DIAL (RIL_SECOND_REQUEST_BASE + 5)
 
 /**
  * RIL_REQUEST_ENABLE_MODEM
@@ -5515,6 +5492,16 @@ RIL_REQUEST_IMS_REG_STATE_CHANGE
 * "response" is NULL
 */
 #define RIL_REQUEST_IMS_REG_STATE_CHANGE (RIL_IMS_REQUEST_BASE + 1)
+
+#define RIL_REQUEST_IMS_REGISTRATION_STATE (RIL_IMS_REQUEST_BASE + 2)
+
+#define RIL_REQUEST_IMS_SET_SERVICE_STATUS (RIL_IMS_REQUEST_BASE + 3)
+
+#define RIL_REQUEST_ADD_PARTICIPANT (RIL_IMS_REQUEST_BASE + 4)
+
+#define RIL_REQUEST_REMOVE_PARTICIPANT (RIL_IMS_REQUEST_BASE + 5)
+
+#define RIL_REQUEST_DIAL_CONFERENCE (RIL_IMS_REQUEST_BASE + 6)
 
 /***********************************************************************/
 #define RIL_UNSOL_RESPONSE_BASE 1000
@@ -6062,6 +6049,12 @@ RIL_REQUEST_IMS_REG_STATE_CHANGE
 
 /***********************************************************************/
 
+#define RIL_UNSOL_EMERGENCY_NUMBER_LIST 1102
+
+// CUS STEP BASE
+#define RIL_CUS_REQUEST_BASE 2000
+
+#define RIL_REQUEST_SET_EMERGENCY_NUMBER (RIL_CUS_REQUEST_BASE + 1)
 
 /* Backward compatible */
 

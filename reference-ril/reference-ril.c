@@ -279,8 +279,8 @@ static const struct timeval TIMEVAL_SIMPOLL = {1,0};
 static const struct timeval TIMEVAL_0 = {0,0};
 
 static int s_ims_registered  = 0;        // 0==unregistered
-static int s_ims_services __unused = 1;  // & 0x1 == sms over ims supported
-static int s_ims_format    = 1;          // FORMAT_3GPP(1) vs FORMAT_3GPP2(2);
+static int s_ims_services = 1;           // & 0x1 == sms over ims supported
+static int s_ims_format __unused = 1;    // FORMAT_3GPP(1) vs FORMAT_3GPP2(2);
 static int s_ims_cause_retry = 0;        // 1==causes sms over ims to temp fail
 static int s_ims_cause_perm_failure = 0; // 1==causes sms over ims to permanent fail
 static int s_ims_gsm_retry   = 0;        // 1==causes sms over gsm to temp fail
@@ -1260,6 +1260,71 @@ static void requestGetPreferredNetworkType(int request __unused, void *data __un
     }
 done:
     RIL_onRequestComplete(t, RIL_E_SUCCESS, &i, sizeof(i));
+}
+
+/*
+ * RIL_REQUEST_IMS_REG_STATE_CHANGE
+ * open/close ims resgister
+ *
+ * "data" is int *
+ * ((int *)data)[0] == 1 open ims reg
+ * ((int *)data)[0] == 0 colse ims reg
+ *
+ * "response" is NULL
+ */
+static void requestImsRegStateChange(void *data, size_t datalen, RIL_Token t)
+{
+    int is_on = 0;
+
+    if (data == NULL) {
+        RLOGD("data is NULL");
+        RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
+        return;
+    }
+
+    is_on = ((int*)data)[0];
+    RLOGD("set volte: is_on = %d\n", is_on);
+
+    if(is_on == 0 || is_on == 1) {
+        s_ims_registered = is_on;
+        RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
+    } else {
+        RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
+    }
+}
+
+/*
+ * RIL_REQUEST_IMS_SET_SERVICE_STATUS
+ *
+ * Request set current IMS service state
+ *
+ * "data" is int *
+ * ((int *)data)[0]
+ * 0x01: voice
+ * 0x04: sms
+ * 0x05: voice & sms
+ *
+ * "response" is NULL
+ */
+void requestImsSetServiceStatus(void *data, size_t datalen, RIL_Token t)
+{
+    int ims_service = 0;
+
+    if (data == NULL) {
+        RLOGD("data is NULL");
+        RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
+        return;
+    }
+
+    ims_service = (*(int*)data);
+    RLOGD("set ims_service : ims_service = %d\n", ims_service);
+
+    if (ims_service == 1 || ims_service == 4 || ims_service == 5) {
+        s_ims_services = ims_service;
+        RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
+    } else {
+        RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
+    }
 }
 
 static void requestCdmaBaseBandVersion(int request __unused, void *data __unused,
@@ -3915,25 +3980,24 @@ onRequest (int request, void *data, size_t datalen, RIL_Token t)
             break;
 
         case RIL_REQUEST_IMS_REGISTRATION_STATE: {
-            int reply[2];
+            RIL_IMS_REGISTRATION_STATE_RESPONSE reply;
             //0==unregistered, 1==registered
-            reply[0] = s_ims_registered;
+            reply.reg_state = s_ims_registered;
 
             //to be used when changed to include service supporated info
-            //reply[1] = s_ims_services;
+            reply.service_type = s_ims_services;
 
-            // FORMAT_3GPP(1) vs FORMAT_3GPP2(2);
-            reply[1] = s_ims_format;
+            reply.uri_response = NULL;
 
-            RLOGD("IMS_REGISTRATION=%d, format=%d ",
-                    reply[0], reply[1]);
-            if (reply[1] != -1) {
-                RIL_onRequestComplete(t, RIL_E_SUCCESS, reply, sizeof(reply));
-            } else {
-                RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
-            }
+            RLOGD("IMS_REGISTRATION=%d, service_type=%d ",
+                    reply.reg_state, reply.service_type);
+            RIL_onRequestComplete(t, RIL_E_SUCCESS, &reply, sizeof(reply));
             break;
         }
+
+        case RIL_REQUEST_IMS_SET_SERVICE_STATUS:
+            requestImsSetServiceStatus(data, datalen, t);
+            break;
 
         case RIL_REQUEST_VOICE_RADIO_TECH:
             {
@@ -3951,7 +4015,9 @@ onRequest (int request, void *data, size_t datalen, RIL_Token t)
         case RIL_REQUEST_GET_PREFERRED_NETWORK_TYPE:
             requestGetPreferredNetworkType(request, data, datalen, t);
             break;
-
+        case RIL_REQUEST_IMS_REG_STATE_CHANGE:
+            requestImsRegStateChange(data, datalen, t);
+            break;
         case RIL_REQUEST_GET_CELL_INFO_LIST:
             requestGetCellInfoList(data, datalen, t);
             break;
