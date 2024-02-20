@@ -3324,7 +3324,7 @@ static void requestSetSmscAddress(void *data, size_t datalen, RIL_Token t)
 
     snprintf(cmd, sizeof(cmd), "AT+CSCA=%s,%d", (char *)data, (int)datalen);
 
-    err = at_send_command_singleline(cmd, "+CSCA:", &p_response);
+    err = at_send_command(cmd, &p_response);
     if (err < 0 || p_response->success == 0) {
         RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
     } else {
