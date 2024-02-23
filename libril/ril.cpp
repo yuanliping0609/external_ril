@@ -261,6 +261,7 @@ static int responseCdmaCallWaiting(Parcel &p,void *response, size_t responselen)
 static int responseSimRefresh(Parcel &p, void *response, size_t responselen);
 static int responseCellInfoList(Parcel &p, void *response, size_t responselen);
 static int responseStringsWithVersion(int version, Parcel &p, void *response, size_t responselen);
+static int responseActivityData(Parcel &p, void *response, size_t responselen);
 static int decodeVoiceRadioTechnology (RIL_RadioState radioState);
 static int decodeCdmaSubscriptionSource (RIL_RadioState radioState);
 static RIL_RadioState processRadioState(RIL_RadioState newRadioState);
@@ -2807,6 +2808,37 @@ static int responseCdmaSms(Parcel &p, void *response, size_t responselen) {
     return 0;
 }
 
+static int responseActivityData(Parcel &p, void *response, size_t responselen) {
+  if (response == NULL || responselen != sizeof(RIL_ActivityStatsInfo)) {
+    if (response == NULL) {
+      RLOGE("invalid response: NULL");
+    }
+    else {
+      RLOGE("responseActivityData: invalid response length %d expecting len: d%",
+            sizeof(RIL_ActivityStatsInfo), responselen);
+    }
+    return RIL_ERRNO_INVALID_RESPONSE;
+  }
+
+  RIL_ActivityStatsInfo *p_cur = (RIL_ActivityStatsInfo *)response;
+  p.writeInt32(p_cur->sleep_mode_time_ms);
+  p.writeInt32(p_cur->idle_mode_time_ms);
+  for(int i = 0; i < RIL_NUM_TX_POWER_LEVELS; i++) {
+    p.writeInt32(p_cur->tx_mode_time_ms[i]);
+  }
+  p.writeInt32(p_cur->rx_mode_time_ms);
+
+  startResponse;
+  appendPrintBuf("Modem activity info received: sleep_mode_time_ms %d idle_mode_time_ms %d \
+                  tx_mode_time_ms %d %d %d %d %d and rx_mode_time_ms %d",
+                  p_cur->sleep_mode_time_ms, p_cur->idle_mode_time_ms, p_cur->tx_mode_time_ms[0],
+                  p_cur->tx_mode_time_ms[1], p_cur->tx_mode_time_ms[2], p_cur->tx_mode_time_ms[3],
+                  p_cur->tx_mode_time_ms[4], p_cur->rx_mode_time_ms);
+   closeResponse;
+
+  return 0;
+}
+
 /**
  * A write on the wakeup fd is done just to pop us out of select()
  * We empty the buffer here and then ril_event will reset the timers on the
@@ -3723,6 +3755,7 @@ requestToString(int request) {
         case RIL_REQUEST_SIM_CLOSE_CHANNEL: return "SIM_CLOSE_CHANNEL";
         case RIL_REQUEST_SIM_TRANSMIT_APDU_CHANNEL: return "SIM_TRANSMIT_APDU_CHANNEL";
         case RIL_REQUEST_SET_DATA_PROFILE: return "SET_DATA_PROFILE";
+        case RIL_REQUEST_GET_ACTIVITY_INFO: return "RIL_REQUEST_GET_ACTIVITY_INFO";
         case RIL_REQUEST_GET_MODEM_STATUS: return "GET_MODEM_STATUS";
         case RIL_REQUEST_EMERGENCY_DIAL: return "EMERGENCY_DIAL";
         case RIL_REQUEST_ENABLE_MODEM: return "RIL_REQUEST_ENABLE_MODEM";

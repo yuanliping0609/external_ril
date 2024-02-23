@@ -149,7 +149,7 @@
     {132, dispatchInts, NULL},
     {133, dispatchVoid, NULL},
     {134, NULL, NULL},
-    {RIL_REQUEST_GET_ACTIVITY_INFO, NULL, NULL},
+    {RIL_REQUEST_GET_ACTIVITY_INFO, dispatchVoid, responseActivityData},
     {136, NULL, NULL},
     {137, NULL, NULL},
     {138, NULL, NULL},
