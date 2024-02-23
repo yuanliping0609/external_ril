@@ -3699,6 +3699,7 @@ onRequest (int request, void *data, size_t datalen, RIL_Token t)
             case RIL_REQUEST_GET_ACTIVITY_INFO:
             case RIL_REQUEST_GET_CURRENT_CALLS:
             case RIL_REQUEST_GET_IMEI:
+            case RIL_REQUEST_GET_IMEISV:
             case RIL_REQUEST_GET_MUTE:
             case RIL_REQUEST_SET_MUTE:
             case RIL_REQUEST_GET_NEIGHBORING_CELL_IDS:
@@ -3873,6 +3874,18 @@ onRequest (int request, void *data, size_t datalen, RIL_Token t)
             at_response_free(p_response);
             break;
 
+        case RIL_REQUEST_GET_IMEISV:
+            p_response = NULL;
+            err = at_send_command_numeric("AT+CGSN=2", &p_response);
+
+            if (err < 0 || p_response->success == 0) {
+                RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
+            } else {
+                RIL_onRequestComplete(t, RIL_E_SUCCESS,
+                    p_response->p_intermediates->line, sizeof(char *));
+            }
+            at_response_free(p_response);
+            break;
 
         case RIL_REQUEST_SIM_IO:
             requestSIM_IO(data,datalen,t);
