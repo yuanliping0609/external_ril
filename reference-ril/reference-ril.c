@@ -4993,6 +4993,7 @@ static void onUnsolicited (const char *s, const char *sms_pdu)
                 || strStartsWith(s,"RING")
                 || strStartsWith(s,"NO CARRIER")
                 || strStartsWith(s,"+CCWA")
+                || strStartsWith(s,"ALERTING")
     ) {
         RIL_onUnsolicitedResponse (
             RIL_UNSOL_RESPONSE_CALL_STATE_CHANGED,
