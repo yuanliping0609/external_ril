@@ -612,6 +612,34 @@ static void requestDataCallList(void *data __unused, size_t datalen __unused, RI
     requestOrSendDataCallList(-1, &t);
 }
 
+static void requestCallFailCause(void *data, size_t datalen, RIL_Token t)
+{
+    int err = -1;
+    int response;
+    char *line = NULL;
+    ATResponse *p_response = NULL;
+
+    err = at_send_command_singleline("AT+CEER?", "+CEER:", &p_response);
+    if (err < 0 || p_response->success == 0) {
+        goto error;
+    }
+
+    line = p_response->p_intermediates->line;
+    err = at_tok_start(&line);
+    if (err < 0) goto error;
+
+    err = at_tok_nextint(&line, &response);
+    if (err < 0) goto error;
+
+    RIL_onRequestComplete(t, RIL_E_SUCCESS, &response, sizeof(response));
+    at_response_free(p_response);
+    return;
+
+error:
+    RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
+    at_response_free(p_response);
+}
+
 // Hang up, reject, conference, call waiting
 static void requestCallSelection(
                 void *data __unused, size_t datalen __unused, RIL_Token t, int request)
@@ -3760,6 +3788,8 @@ onRequest (int request, void *data, size_t datalen, RIL_Token t)
         case RIL_REQUEST_UDUB:
              requestCallSelection(data, datalen, t, request);
              break;
+        case RIL_REQUEST_LAST_CALL_FAIL_CAUSE:
+            requestCallFailCause(data, datalen, t);
         case RIL_REQUEST_ANSWER:
             at_send_command("ATA", NULL);
 
