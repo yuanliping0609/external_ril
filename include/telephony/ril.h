@@ -5382,6 +5382,19 @@ typedef struct {
 #define RIL_REQUEST_GET_ACTIVITY_INFO 135
 
 /**
+ * RIL_REQUEST_ENABLE_MODEM
+ *
+ * Enable a logical modem
+ *
+ * Valid errors:
+ *  SUCCESS
+ *  RADIO_NOT_AVAILABLE
+ *  MODEM_ERR
+ *
+ */
+#define RIL_REQUEST_ENABLE_MODEM 146
+
+/**
  * RIL_REQUEST_GET_MODEM_STATUS
  *
  * request status of a logci modem
@@ -5450,19 +5463,6 @@ typedef struct {
  *  INVALID_MODEM_STATE
  */
 #define RIL_REQUEST_EMERGENCY_DIAL (RIL_SECOND_REQUEST_BASE + 5)
-
-/**
- * RIL_REQUEST_ENABLE_MODEM
- *
- * Enable a logical modem
- *
- * Valid errors:
- *  SUCCESS
- *  RADIO_NOT_AVAILABLE
- *  MODEM_ERR
- *
- */
-#define RIL_REQUEST_ENABLE_MODEM 151
 
 /**
  * RIL_REQUEST_ENABLE_UICC_APPLICATIONS

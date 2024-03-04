@@ -286,6 +286,8 @@ static int s_ims_cause_perm_failure = 0; // 1==causes sms over ims to permanent 
 static int s_ims_gsm_retry   = 0;        // 1==causes sms over gsm to temp fail
 static int s_ims_gsm_fail    = 0;        // 1==causes sms over gsm to permanent fail
 
+static int s_modem_enabled = 0;
+
 #ifdef WORKAROUND_ERRONEOUS_ANSWER
 // Max number of times we'll try to repoll when we think
 // we have a AT+CLCC race condition
@@ -2867,7 +2869,7 @@ static void requestSetMute(void *data, size_t datalen, RIL_Token t)
 
 static void requestGetModemStatus(void *data,size_t datalen,RIL_Token t)
 {
-    int modemState = 1;
+    int modemState = s_modem_enabled;
     syslog(LOG_INFO, "response RIL_REQUEST_GET_MODEM_STATUS, status is [%d]\n", modemState);
     RIL_onRequestComplete(t, RIL_E_SUCCESS, &modemState, sizeof(int));
     return;
@@ -3699,12 +3701,19 @@ onRequest (int request, void *data, size_t datalen, RIL_Token t)
     int err;
 
     RLOGD("onRequest: %s, sState: %d", requestToString(request), sState);
+    if (s_modem_enabled == 0 && request != RIL_REQUEST_ENABLE_MODEM
+        && request != RIL_REQUEST_GET_MODEM_STATUS) {
+        RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
+        return;
+    }
 
     /* Ignore all requests except RIL_REQUEST_GET_SIM_STATUS
      * when RADIO_STATE_UNAVAILABLE.
      */
     if (sState == RADIO_STATE_UNAVAILABLE
         && request != RIL_REQUEST_GET_SIM_STATUS
+        && request != RIL_REQUEST_ENABLE_MODEM
+        && request != RIL_REQUEST_GET_MODEM_STATUS
     ) {
         RIL_onRequestComplete(t, RIL_E_RADIO_NOT_AVAILABLE, NULL, 0);
         return;
@@ -3744,6 +3753,8 @@ onRequest (int request, void *data, size_t datalen, RIL_Token t)
             case RIL_REQUEST_SET_UNSOL_CELL_INFO_LIST_RATE:
             case RIL_REQUEST_VOICE_RADIO_TECH:
             case RIL_REQUEST_SCREEN_STATE:
+            case RIL_REQUEST_ENABLE_MODEM:
+            case RIL_REQUEST_GET_MODEM_STATUS:
                 // Process all the above, even though the radio is off
                 break;
 
@@ -4243,6 +4254,7 @@ onRequest (int request, void *data, size_t datalen, RIL_Token t)
             requestStksendTerminalResponse(data, t);
             break;
         case RIL_REQUEST_ENABLE_MODEM:
+            s_modem_enabled = *(int *)data;
             RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
             break;
         case RIL_REQUEST_EMERGENCY_DIAL:
@@ -4981,6 +4993,10 @@ static void onUnsolicited (const char *s, const char *sms_pdu)
 {
     char *line = NULL, *p;
     int err;
+
+    if (s_modem_enabled == 0) {
+        return;
+    }
 
     /* Ignore unsolicited responses until we're initialized.
      * This is OK because the RIL library will poll for initial state
