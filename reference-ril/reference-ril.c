@@ -3680,6 +3680,41 @@ error:
     RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
 }
 
+/**
+ * @brief send the RIL_UNSOL_SUPP_SVC_NOTIFICATION to ofono
+ *
+ * @param notificationType        0 = MO intermediate result code; 1 = MT unsolicited result code
+ * @param code      See 27.007 7.17,"code1" for MO , "code2" for MT.
+ * @param index     CUG index. See 27.007 7.17.
+ * @param type      "type" from 27.007 7.17 (MT only).
+ * @param number    "number" from 27.007 7.17( MT only, may be NULL.)
+ */
+void unsolicitedSuppSvcNotification(int notificationType,
+    int code, int index, int type, const char *number) {
+    RIL_SuppSvcNotification response = {0};
+
+    if((notificationType != 0) && (notificationType != 1)) {
+        RLOGW("unsolicitedSuppSvcNotification notificationType is out of range!");
+        return;
+    }
+
+    RLOGD("unsolicitedSuppSvcNotification notification code is [%d]!", code);
+
+    response.notificationType = notificationType;
+    response.code = code;
+    response.index = index;
+    response.type = type;
+
+    if (number != NULL) {
+        RLOGD("unsolicitedSuppSvcNotification response number [%s]!", number);
+        response.number = (char *)number;
+    } else {
+        response.number = NULL;
+    }
+
+    RIL_onUnsolicitedResponse(RIL_UNSOL_SUPP_SVC_NOTIFICATION, &response, sizeof(RIL_SuppSvcNotification));
+}
+
 /*** Callback methods from the RIL library to us ***/
 
 /**
@@ -5060,6 +5095,10 @@ static void onUnsolicited (const char *s, const char *sms_pdu)
 #ifdef WORKAROUND_FAKE_CGEV
         RIL_requestTimedCallback (onDataCallListChanged, NULL, NULL); //TODO use new function
 #endif /* WORKAROUND_FAKE_CGEV */
+    } else if (strStartsWith(s, "HOLD")) {
+        unsolicitedSuppSvcNotification(1, 2, 0, 0, NULL);
+    } else if (strStartsWith(s, "UNHOLD")) {
+        unsolicitedSuppSvcNotification(1, 3, 0, 0, NULL);
     } else if (strStartsWith(s,"+CREG:")
                 || strStartsWith(s,"+CGREG:")
     ) {
