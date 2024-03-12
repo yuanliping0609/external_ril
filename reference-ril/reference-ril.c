@@ -285,6 +285,7 @@ static int s_ims_cause_retry = 0;        // 1==causes sms over ims to temp fail
 static int s_ims_cause_perm_failure = 0; // 1==causes sms over ims to permanent fail
 static int s_ims_gsm_retry   = 0;        // 1==causes sms over gsm to temp fail
 static int s_ims_gsm_fail    = 0;        // 1==causes sms over gsm to permanent fail
+static char *s_ims_uri = "sip:+115551234567@ub.ims.mnc310.mcc260.3gppnetwork.org";
 
 static int s_modem_enabled = 0;
 
@@ -4074,9 +4075,9 @@ onRequest (int request, void *data, size_t datalen, RIL_Token t)
             reply.reg_state = s_ims_registered;
 
             //to be used when changed to include service supporated info
-            reply.service_type = s_ims_services;
+            reply.service_type = s_ims_registered ? s_ims_services : 0;
 
-            reply.uri_response = NULL;
+            reply.uri_response = s_ims_uri;
 
             RLOGD("IMS_REGISTRATION=%d, service_type=%d ",
                     reply.reg_state, reply.service_type);
