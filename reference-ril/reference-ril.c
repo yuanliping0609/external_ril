@@ -450,37 +450,71 @@ static int parseSimResponseLine(char* line, RIL_SIM_IO_Response* response) {
     return 0;
 }
 
-static void set_Ip_Addr(const char *addr, const char* radioInterfaceName) {
-  RLOGD("%s %d setting ip addr %s on interface %s", __func__, __LINE__, addr,
+static void set_Ip_Addr(const char *addr, const char *radioInterfaceName) {
+    RLOGD("%s %d setting ip addr %s on interface %s", __func__, __LINE__, addr,
         radioInterfaceName);
-  struct ifreq request;
-  int sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_IP);
-  if (sock == -1) {
-    RLOGE("Failed to open interface socket: %s (%d)", strerror(errno), errno);
-    return;
-  }
+    struct ifreq request;
+    struct sockaddr_in *sin = NULL;
+    int sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_IP);
+    if (sock == -1) {
+        RLOGE("Failed to open interface socket: %s (%d)", strerror(errno), errno);
+        return;
+    }
 
-  memset(&request, 0, sizeof(request));
-  strncpy(request.ifr_name, radioInterfaceName, sizeof(request.ifr_name));
-  request.ifr_name[sizeof(request.ifr_name) - 1] = '\0';
+    memset(&request, 0, sizeof(request));
+    strncpy(request.ifr_name, radioInterfaceName, sizeof(request.ifr_name));
+    request.ifr_name[sizeof(request.ifr_name) - 1] = '\0';
 
-  char *myaddr = strdup(addr);
-  char *pch = NULL;
-  pch = strchr(myaddr, '/');
-  if (pch) {
-    *pch = '\0';
-  }
+    char *myaddr = strdup(addr);
+    char *pch = NULL;
+    pch = strchr(myaddr, '/');
+    if (pch) {
+        *pch = '\0';
+        pch ++;
+        int subnet_mask = atoi(pch);
+        sin = (struct sockaddr_in *)&request.ifr_addr;
+        sin->sin_family = AF_INET;
+        sin->sin_addr.s_addr = htonl(((uint32_t)(-1)) << (32 - subnet_mask));
+        if (ioctl(sock, SIOCSIFNETMASK, &request) < 0) {
+            RLOGE("%s: failed.", __func__);
+        }
+    }
 
-  struct sockaddr_in *sin = (struct sockaddr_in *)&request.ifr_addr;
-  sin->sin_family = AF_INET;
-  sin->sin_addr.s_addr = inet_addr(myaddr);
-  if (ioctl(sock, SIOCSIFADDR, &request) < 0) {
-    RLOGE("%s: failed.", __func__);
-  }
+    sin = (struct sockaddr_in *)&request.ifr_addr;
+    sin->sin_family = AF_INET;
+    sin->sin_addr.s_addr = inet_addr(myaddr);
+    if (ioctl(sock, SIOCSIFADDR, &request) < 0) {
+        RLOGE("%s: failed.", __func__);
+    }
 
-  close(sock);
-  free(myaddr);
-  RLOGD("%s %d done.", __func__, __LINE__);
+    close(sock);
+    free(myaddr);
+    RLOGD("%s %d done.", __func__, __LINE__);
+}
+
+static void set_Gw_Addr(const char *gw, const char *radioInterfaceName) {
+    RLOGD("%s %d setting gateway addr %s on interface %s", __func__, __LINE__, addr,
+        radioInterfaceName);
+    struct ifreq request;
+    int sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_IP);
+    if (sock == -1) {
+        RLOGE("Failed to open interface socket: %s (%d)", strerror(errno), errno);
+        return;
+    }
+
+    memset(&request, 0, sizeof(request));
+    strncpy(request.ifr_name, radioInterfaceName, sizeof(request.ifr_name));
+    request.ifr_name[sizeof(request.ifr_name) - 1] = '\0';
+
+    struct sockaddr_in *sin = (struct sockaddr_in *)&request.ifr_addr;
+    sin->sin_family = AF_INET;
+    sin->sin_addr.s_addr = inet_addr(gw);
+    if (ioctl(sock, SIOCSIFDSTADDR, &request) < 0) {
+        RLOGE("%s: failed.", __func__);
+    }
+
+    close(sock);
+    RLOGD("%s %d done.", __func__, __LINE__);
 }
 
 enum InterfaceState {
@@ -881,6 +915,7 @@ static void requestOrSendDataCallList(int cid, RIL_Token *t)
     err = at_tok_nextstr(&input, &responses[i].gateways);  // gw_addr
     if (err < 0) goto error;
 
+    set_Gw_Addr(responses[i].gateways, radioInterfaceName);
     err = at_tok_nextstr(&input, &responses[i].dnses);  // dns_prim_addr
     if (err < 0) goto error;
 
