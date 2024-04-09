@@ -123,10 +123,6 @@ char* strncpy16to8(char* utf8Str, const char16_t* utf16Str, size_t len)
             *utf8cur++ = (uic & 0x3f) | 0x80;
         } else {
             *utf8cur++ = uic;
-
-            if (uic == 0) {
-                break;
-            }
         }
     }
 
