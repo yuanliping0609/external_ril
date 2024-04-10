@@ -551,8 +551,11 @@ static RIL_Errno setInterfaceState(const char* interfaceName,
         return RIL_E_SUCCESS;
     }
 
-    // Simply toggle the flag since we know it's the opposite of what we want
-    request.ifr_flags ^= IFF_UP;
+    if (state == kInterfaceDown) {
+        request.ifr_flags &= ~(IFF_UP | IFF_RUNNING);
+        request.ifr_flags |= IFF_DOWN;
+    } else
+        request.ifr_flags |= IFF_UP;
 
     status = ioctl(sock, SIOCSIFFLAGS, &request);
     if (status != 0) {
