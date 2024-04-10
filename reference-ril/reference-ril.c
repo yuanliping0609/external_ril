@@ -522,6 +522,34 @@ enum InterfaceState {
     kInterfaceDown,
 };
 
+static void clearNetworkConfig(const char *interfaceName)
+{
+    struct ifreq request;
+    int sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_IP);
+    if (sock == -1) {
+        RLOGE("Failed to open interface socket: %s (%d)",
+              strerror(errno), errno);
+        return;
+    }
+
+    memset(&request, 0, sizeof(request));
+    strncpy(request.ifr_name, interfaceName, sizeof(request.ifr_name));
+
+    if (ioctl(sock, SIOCSIFADDR, &request) < 0) {
+        RLOGE("Fail to clear IP addr");
+    }
+
+    if (ioctl(sock, SIOCSIFNETMASK, &request) < 0) {
+        RLOGE("Fail to clear netmask");
+    }
+
+    if (ioctl(sock, SIOCSIFDSTADDR, &request) < 0) {
+        RLOGE("Fail to clear gateway");
+    }
+
+    close(sock);
+}
+
 static RIL_Errno setInterfaceState(const char* interfaceName,
                                    enum InterfaceState state) {
     struct ifreq request;
@@ -876,6 +904,7 @@ static void requestOrSendDataCallList(int cid, RIL_Token *t)
         } else
             RIL_onUnsolicitedResponse(RIL_UNSOL_DATA_CALL_LIST_CHANGED, responses,
                                       n * sizeof(RIL_Data_Call_Response_v11));
+        clearNetworkConfig(radioInterfaceName);
         at_response_free(p_response);
         p_response = NULL;
         return;
