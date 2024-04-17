@@ -278,7 +278,6 @@ static int s_closed = 0;
 static const struct timeval TIMEVAL_SIMPOLL = {1,0};
 static const struct timeval TIMEVAL_0 = {0,0};
 
-static int s_ims_services = 1;           // & 0x1 == sms over ims supported
 static int s_ims_format __unused = 1;    // FORMAT_3GPP(1) vs FORMAT_3GPP2(2);
 static int s_ims_cause_retry = 0;        // 1==causes sms over ims to temp fail
 static int s_ims_cause_perm_failure = 0; // 1==causes sms over ims to permanent fail
@@ -1421,6 +1420,9 @@ static void requestImsRegStateChange(void *data, size_t datalen, RIL_Token t)
 void requestImsSetServiceStatus(void *data, size_t datalen, RIL_Token t)
 {
     int ims_service = 0;
+    char *cmd;
+    ATResponse *p_response = NULL;
+    int err = -1;
 
     if (data == NULL) {
         RLOGD("data is NULL");
@@ -1430,13 +1432,23 @@ void requestImsSetServiceStatus(void *data, size_t datalen, RIL_Token t)
 
     ims_service = (*(int*)data);
     RLOGD("set ims_service : ims_service = %d\n", ims_service);
-
-    if (ims_service == 1 || ims_service == 4 || ims_service == 5) {
-        s_ims_services = ims_service;
-        RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
-    } else {
+    if (ims_service != 1 && ims_service != 4 && ims_service != 5) {
+        RLOGE("Invalid arguments in RIL");
         RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
+        return;
     }
+
+    asprintf(&cmd, "AT+CASIMS=%d", ims_service);
+    err = at_send_command(cmd, &p_response);
+    free(cmd);
+
+    if (err < 0 || p_response->success == 0) {
+        RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
+    } else {
+        RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
+    }
+
+    at_response_free(p_response);
 }
 
 static void requestCdmaBaseBandVersion(int request __unused, void *data __unused,
