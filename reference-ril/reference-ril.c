@@ -1375,6 +1375,9 @@ done:
 static void requestImsRegStateChange(void *data, size_t datalen, RIL_Token t)
 {
     int is_on = 0;
+    char *cmd;
+    ATResponse *p_response = NULL;
+    int err = -1;
 
     if (data == NULL) {
         RLOGD("data is NULL");
@@ -1385,12 +1388,23 @@ static void requestImsRegStateChange(void *data, size_t datalen, RIL_Token t)
     is_on = ((int*)data)[0];
     RLOGD("set volte: is_on = %d\n", is_on);
 
-    if(is_on == 0 || is_on == 1) {
-        s_ims_registered = is_on;
-        RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
-    } else {
+    if (is_on != 0 && is_on != 1) {
+        RLOGE("Invalid arguments in RIL");
         RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
+        return;
     }
+
+    asprintf(&cmd, "AT+CAVIMS=%d", is_on);
+    err = at_send_command(cmd, &p_response);
+    free(cmd);
+
+    if (err < 0 || p_response->success == 0) {
+        RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
+    } else {
+        RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
+    }
+
+    at_response_free(p_response);
 }
 
 /*
