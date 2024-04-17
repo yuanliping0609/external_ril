@@ -278,14 +278,12 @@ static int s_closed = 0;
 static const struct timeval TIMEVAL_SIMPOLL = {1,0};
 static const struct timeval TIMEVAL_0 = {0,0};
 
-static int s_ims_registered  = 0;        // 0==unregistered
 static int s_ims_services = 1;           // & 0x1 == sms over ims supported
 static int s_ims_format __unused = 1;    // FORMAT_3GPP(1) vs FORMAT_3GPP2(2);
 static int s_ims_cause_retry = 0;        // 1==causes sms over ims to temp fail
 static int s_ims_cause_perm_failure = 0; // 1==causes sms over ims to permanent fail
 static int s_ims_gsm_retry   = 0;        // 1==causes sms over gsm to temp fail
 static int s_ims_gsm_fail    = 0;        // 1==causes sms over gsm to permanent fail
-static char *s_ims_uri = "sip:+115551234567@ub.ims.mnc310.mcc260.3gppnetwork.org";
 
 static int s_modem_enabled = 0;
 
@@ -2095,13 +2093,6 @@ static void requestImsSendSMS(void *data, size_t datalen, RIL_Token t)
 
     memset(&response, 0, sizeof(response));
 
-    RLOGD("requestImsSendSMS: datalen=%zu, "
-        "registered=%d, service=%d, format=%d, ims_perm_fail=%d, "
-        "ims_retry=%d, gsm_fail=%d, gsm_retry=%d",
-        datalen, s_ims_registered, s_ims_services, s_ims_format,
-        s_ims_cause_perm_failure, s_ims_cause_retry, s_ims_gsm_fail,
-        s_ims_gsm_retry);
-
     // figure out if this is gsm/cdma format
     // then route it to requestSendSMS vs requestCdmaSendSMS respectively
     p_args = (RIL_IMS_SMS_Message *)data;
@@ -2771,6 +2762,56 @@ static void requestChangeSimPin2(void *data, size_t datalen, RIL_Token t) {
 error:
     RIL_onRequestComplete(t, RIL_E_PASSWORD_INCORRECT, &remaintime,
                           sizeof(remaintime));
+    at_response_free(p_response);
+}
+
+static void requestImsRegState(void *data, size_t datalen, RIL_Token t)
+{
+    ATResponse *p_response = NULL;
+    int err;
+    char *line;
+    RIL_IMS_REGISTRATION_STATE_RESPONSE reply;
+
+    err = at_send_command_singleline("AT+CIREG?", "+CIREG:", &p_response);
+    if (err < 0 || !p_response->success) {
+        goto error;
+    }
+
+    line = p_response->p_intermediates->line;
+
+    err = at_tok_start(&line);
+    if (err < 0)
+        goto error;
+
+    err = at_tok_nextint(&line, &reply.reg_state);
+    if (err < 0)
+        goto error;
+
+    err = at_tok_nextint(&line, &reply.service_type);
+    if (err < 0)
+        goto error;
+
+    err = at_send_command_singleline("AT+CNUM", "+CNUM:", &p_response);
+    if (err < 0 || !p_response->success) {
+        goto error;
+    }
+
+    line = p_response->p_intermediates->line;
+    err = at_tok_start(&line);
+    if (err < 0)
+        goto error;
+
+    err = at_tok_nextstr(&line, &reply.uri_response);
+
+    if (err < 0)
+        goto error;
+
+    RIL_onRequestComplete(t, RIL_E_SUCCESS, &reply, sizeof(reply));
+    at_response_free(p_response);
+    return;
+
+error:
+    RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
     at_response_free(p_response);
 }
 
@@ -4153,18 +4194,7 @@ onRequest (int request, void *data, size_t datalen, RIL_Token t)
             break;
 
         case RIL_REQUEST_IMS_REGISTRATION_STATE: {
-            RIL_IMS_REGISTRATION_STATE_RESPONSE reply;
-            //0==unregistered, 1==registered
-            reply.reg_state = s_ims_registered;
-
-            //to be used when changed to include service supporated info
-            reply.service_type = s_ims_registered ? s_ims_services : 0;
-
-            reply.uri_response = s_ims_uri;
-
-            RLOGD("IMS_REGISTRATION=%d, service_type=%d ",
-                    reply.reg_state, reply.service_type);
-            RIL_onRequestComplete(t, RIL_E_SUCCESS, &reply, sizeof(reply));
+            requestImsRegState(data, datalen, t);
             break;
         }
 
