@@ -1132,23 +1132,57 @@ error:
 
 static void requestDtmfStart(void *data, size_t datalen, RIL_Token t)
 {
-    if (NULL == data)
-    {
+    char c_key;
+    char *cmd;
+    ATResponse *p_response = NULL;
+    int err = -1;
+
+    if (NULL == data) {
         RLOGE("data is NULL!");
         RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
         return;
     }
 
-    RLOGD("send dtmf success!");
-    RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
-    return;
+    c_key = ((char *)data)[0];
+    if (!(c_key >= '0' && c_key <= '9') && c_key != '#' && c_key != '*' &&
+        !(c_key >= 'A' && c_key <= 'D')) {
+        RLOGE("Invalid argument in RIL");
+        RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
+        return;
+    }
+
+    asprintf(&cmd, "AT+VTS=%c", c_key);
+    err = at_send_command(cmd, &p_response);
+    free(cmd);
+
+    if (err < 0 || p_response->success == 0) {
+        RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
+    } else {
+        RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
+    }
+
+    at_response_free(p_response);
 }
 
 static void requestDtmfStop(void *data, size_t datalen, RIL_Token t)
 {
-    RLOGD("stop dtmf success!");
-    RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
-    return;
+    ATResponse *p_response = NULL;
+    int err = -1;
+
+    if (NULL != data) {
+        RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
+        return;
+    }
+
+    err = at_send_command("AT+VTS=", &p_response);
+
+    if (err < 0 || p_response->success == 0) {
+        RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
+    } else {
+        RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
+    }
+
+    at_response_free(p_response);
 }
 
 static void requestDial(void *data, size_t datalen __unused, RIL_Token t)
