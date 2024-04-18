@@ -1485,15 +1485,37 @@ void requestImsSetServiceStatus(void *data, size_t datalen, RIL_Token t)
     at_response_free(p_response);
 }
 
-static void requestCdmaBaseBandVersion(int request __unused, void *data __unused,
+static void requestBaseBandVersion(int request __unused, void *data __unused,
                                    size_t datalen __unused, RIL_Token t)
 {
-    char * responseStr;
+    ATResponse *p_response = NULL;
+    int err;
+    char *line;
+    char *responseStr;
+    
+    err = at_send_command_singleline("AT+CGMR", "+CGMR:", &p_response);
+    if (err < 0 || !p_response->success) {
+        goto error;
+    }
 
-    // Fixed values. TODO: query modem
-    responseStr = strdup("1.0.0.0");
+    line = p_response->p_intermediates->line;
+
+    err = at_tok_start(&line);
+    if (err < 0)
+        goto error;
+    
+    err = at_tok_nextstr(&line, &responseStr);
+    if (err < 0)
+        goto error;
+    
+
     RIL_onRequestComplete(t, RIL_E_SUCCESS, responseStr, sizeof(responseStr));
-    free(responseStr);
+    at_response_free(p_response);
+    return;
+
+error:
+    RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
+    at_response_free(p_response);
 }
 
 static void requestDeviceIdentity(int request __unused, void *data __unused,
@@ -4309,7 +4331,7 @@ onRequest (int request, void *data, size_t datalen, RIL_Token t)
             break;
 
         case RIL_REQUEST_BASEBAND_VERSION:
-            requestCdmaBaseBandVersion(request, data, datalen, t);
+            requestBaseBandVersion(request, data, datalen, t);
             break;
 
         case RIL_REQUEST_DEVICE_IDENTITY:
