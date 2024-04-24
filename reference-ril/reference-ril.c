@@ -3908,6 +3908,42 @@ void unsolicitedSuppSvcNotification(int notificationType,
     RIL_onUnsolicitedResponse(RIL_UNSOL_SUPP_SVC_NOTIFICATION, &response, sizeof(RIL_SuppSvcNotification));
 }
 
+void unsolicitedRingBackTone(const char *s)
+{
+    char *line, *p;
+    int cid, action, type;
+
+    line = p = strdup(s);
+    if (!line) {
+        RLOGE("^MRINGTONE: Unable to allocate memory");
+        return;
+    }
+    if (at_tok_start(&p) < 0) {
+        free(line);
+        return;
+    }
+    if (at_tok_nextint(&p, &cid) < 0) {
+        RLOGE("invalid ^MRINGTONE response: %s", line);
+        free(line);
+        return;
+    }
+    if (at_tok_nextint(&p, &action) < 0) {
+        RLOGE("invalid ^MRINGTONE response: %s", line);
+        free(line);
+        return;
+    }
+    if (at_tok_nextint(&p, &type) < 0) {
+        RLOGE("invalid ^MRINGTONE response: %s", line);
+        free(line);
+        return;
+    }
+
+    RLOGD("On Ringback tone URC, cid: %d, action: %s, type: %s", cid,
+        action == 1 ? "START" : "STOP", type == 1 ? "RINGBACK" : "CALL HOLDING");
+    RIL_onUnsolicitedResponse(RIL_UNSOL_RINGBACK_TONE, &action, sizeof(int));
+    free(line);
+}
+
 /*** Callback methods from the RIL library to us ***/
 
 /**
@@ -5347,6 +5383,8 @@ static void onUnsolicited (const char *s, const char *sms_pdu)
         RIL_onUnsolicitedResponse(RIL_UNSOL_CDMA_SUBSCRIPTION_SOURCE_CHANGED,
                                   &source, sizeof(source));
         free(line);
+    } else if (strStartsWith(s, "^MRINGTONE: ")) {
+        unsolicitedRingBackTone(s);
     } else if (strStartsWith(s, "+WSOS: ")) {
         char state = 0;
         int unsol;
