@@ -288,7 +288,22 @@ static void requestEnableModem(void *data, size_t datalen, RIL_Token t)
     (void)data;
     (void)datalen;
 
+    int err;
+    ATResponse *p_response = NULL;
+
     s_modem_enabled = *(int *)data;
+    if (s_modem_enabled == 0) {
+        err = at_send_command("AT+CFUN=0", &p_response);
+        if (err < 0 || p_response->success == 0) {
+            at_response_free(p_response);
+            RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
+        } else {
+            setRadioState(RADIO_STATE_UNAVAILABLE);
+        }
+    } else if (s_modem_enabled == 1) {
+        setRadioState(RADIO_STATE_OFF);
+    }
+
     RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
 }
 
