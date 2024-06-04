@@ -27,6 +27,8 @@
 #include "at_ril.h"
 #include "at_sim.h"
 
+#define MAX_OPER_NAME_LENGTH (30)
+
 static int net2modem[] = {
     MDM_GSM | MDM_WCDMA,                                 // 0  - GSM / WCDMA Pref
     MDM_GSM,                                             // 1  - GSM only
@@ -418,6 +420,161 @@ error:
         RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
     }
 
+    at_response_free(p_response);
+}
+
+void requestQueryAvailableNetworks(void *data, size_t datalen, RIL_Token t)
+{
+    (void)data;
+    (void)datalen;
+
+    ATResponse *p_response = NULL;
+    int err = -1;
+    char *line;
+    int len;
+    int i, j, k;
+    int nplmns;
+    int nplmns_valid;
+    char **response;
+    char **response_valid;
+    char *str;
+    char *item;
+    char *result;
+
+    err = at_send_command_singleline("AT+COPS=?", "+COPS:", &p_response);
+    if (err < 0 || !p_response || !p_response->success || !p_response->p_intermediates) {
+        RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
+        at_response_free(p_response);
+        return;
+    }
+
+    /*
+     * response is +COPS: (3,"CHINA MOBILE","CMCC","46000"),(3,"CHINA-UNICOM","UNICOM","46001"),
+     */
+    line = p_response->p_intermediates->line;
+    len = strlen(line);
+
+    for (i = 0, nplmns = 0, nplmns_valid = 0; i < len; i ++) {
+        if (line[i] == ')') {
+            nplmns ++;
+            nplmns_valid ++;
+        }
+    }
+
+    response = (char **)calloc(1, sizeof(char *) * nplmns * 4);
+    if (!response) {
+        RIL_onRequestComplete(t, RIL_E_NO_MEMORY, NULL, 0);
+        at_response_free(p_response);
+        return;
+    }
+
+    item = (char *)calloc(1, nplmns * sizeof(char) * 4 * MAX_OPER_NAME_LENGTH);
+    if (!item) {
+        RIL_onRequestComplete(t, RIL_E_NO_MEMORY, NULL, 0);
+        free(response);
+        at_response_free(p_response);
+        return;
+    }
+
+    result = line;
+    for (i = 0, j = 0; i < nplmns; i ++, j += 4) {
+        char *next_item = strchr(result, '(');
+        if (!next_item)
+            break;
+
+        result = next_item + 1;
+        str = strchr(result, ',');
+        if (!str)
+            break;
+
+        *str ++ = '\0';
+        response[j + 3] = &item[(j + 3) * MAX_OPER_NAME_LENGTH];
+
+        switch (atoi(result)) {
+            case 0:
+                strcpy(response[j + 3], "unknown");
+                break;
+            case 1:
+                strcpy(response[j + 3], "available");
+                break;
+            case 2:
+                strcpy(response[j + 3], "current");
+                break;
+            case 3:
+                strcpy(response[j + 3], "forbidden");
+                break;
+            default:
+                RLOGE("<stat> %d is an invalid value: %d", i, value);
+                break;
+        }
+
+        result = strchr(str, ',');
+        if (!result)
+            break;
+
+        *result ++ = '\0';
+        response[j + 0] = &item[(j + 0) * MAX_OPER_NAME_LENGTH];
+        strcpy(response[j + 0], str);
+
+        str = strchr(result, ',');
+        if (!str)
+            break;
+
+        *str ++ = '\0';
+        response[j + 1] = &item[(j + 1) * MAX_OPER_NAME_LENGTH];
+        strcpy(response[j + 1], result);
+
+        result = strchr(str, ')');
+        if (!result)
+            break;
+
+        *result ++ = '\0';
+        response[j + 2] = &item[(j + 2) * MAX_OPER_NAME_LENGTH];
+        strcpy(response[j + 2], str);
+
+        len = strlen(response[j + 2]);
+        if (len != 5 && len != 6) {
+            RLOGE("The length of the numeric code is incorrect");
+            RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
+            free(response);
+            free(item);
+            at_response_free(p_response);
+            return;
+        }
+
+        for (k = 0; k < j; k += 4) {
+            if (0 == strncmp(response[j + 2], response[k + 2], MAX_OPER_NAME_LENGTH)) {
+                response[j + 2] = "";
+                nplmns_valid --;
+                break;
+            }
+        }
+    }
+
+    response_valid = (char **)calloc(1, sizeof(char *) * nplmns_valid * 4);
+    if (!response_valid) {
+        RIL_onRequestComplete(t, RIL_E_NO_MEMORY, NULL, 0);
+        free(response);
+        free(item);
+        at_response_free(p_response);
+        return;
+    }
+
+    for (i = 0, k = 0; i < nplmns; i ++) {
+        if (response[i * 4 + 2] && strlen(response[i * 4 + 2]) > 0) {
+            response_valid[k + 0] = response[i * 4 + 0];
+            response_valid[k + 1] = response[i * 4 + 1];
+            response_valid[k + 2] = response[i * 4 + 2];
+            response_valid[k + 3] = response[i * 4 + 3];
+            k += 4;
+        }
+    }
+
+    RIL_onRequestComplete(t, RIL_E_SUCCESS, response_valid, sizeof(char *) * nplmns_valid * 4);
+
+    free(response);
+    free(response_valid);
+    free(item);
     at_response_free(p_response);
 }
 
@@ -912,6 +1069,8 @@ void on_request_network(int request, void *data, size_t datalen, RIL_Token t)
     case RIL_REQUEST_SET_NETWORK_SELECTION_MANUAL:
         requestSetNetworlSelectionManual(data, datalen, t);
         break;
+    case RIL_REQUEST_QUERY_AVAILABLE_NETWORKS:
+        requestQueryAvailableNetworks(data, datalen, t);
     case RIL_REQUEST_SET_BAND_MODE:
         RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
         break;
