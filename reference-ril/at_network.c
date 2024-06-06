@@ -14,6 +14,7 @@
 ** limitations under the License.
 */
 
+#include <assert.h>
 #include <limits.h>
 #include <stdio.h>
 #include <sys/cdefs.h>
