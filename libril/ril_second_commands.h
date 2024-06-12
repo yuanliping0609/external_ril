@@ -20,4 +20,8 @@
     {202, NULL, NULL},
     {203, NULL, NULL},
     {204, NULL, NULL},
-    {RIL_REQUEST_EMERGENCY_DIAL, dispatchDial, responseVoid}
+    {RIL_REQUEST_EMERGENCY_DIAL, dispatchDial, responseVoid},
+    {206, NULL, NULL},
+    {207, NULL, NULL},
+    {RIL_REQUEST_ENABLE_UICC_APPLICATIONS, dispatchInts, responseVoid},
+    {RIL_REQUEST_GET_UICC_APPLICATIONS_ENABLEMENT, dispatchVoid, responseInts},

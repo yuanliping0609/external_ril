@@ -97,6 +97,8 @@ static inline req_category_t request2eventtype(int request)
     case RIL_REQUEST_SIM_OPEN_CHANNEL:
     case RIL_REQUEST_SIM_CLOSE_CHANNEL:
     case RIL_REQUEST_SIM_TRANSMIT_APDU_CHANNEL:
+    case RIL_REQUEST_ENABLE_UICC_APPLICATIONS:
+    case RIL_REQUEST_GET_UICC_APPLICATIONS_ENABLEMENT:
         type = REQ_SIM_TYPE;
         break;
     case RIL_REQUEST_GET_CURRENT_CALLS:

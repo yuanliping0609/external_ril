@@ -29,7 +29,7 @@
 #define SSOURCE(mdminfo) ((mdminfo)->subscription_source)
 
 static const struct timeval TIMEVAL_SIMPOLL = {1,0};
-static bool areUiccApplicationsEnabled = true;
+static int areUiccApplicationsEnabled = true;
 
 // STK
 static bool s_stkServiceRunning = false;
@@ -1121,6 +1121,14 @@ static void requestEnableUICCApplication(void *data, size_t datalen, RIL_Token t
     RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
 }
 
+static void requestQueryUICCApplication(void *data, size_t datalen, RIL_Token t)
+{
+    (void)data;
+    (void)datalen;
+    RIL_onRequestComplete(t, RIL_E_SUCCESS, &areUiccApplicationsEnabled,
+        sizeof(areUiccApplicationsEnabled));
+}
+
 static int parseProactiveCmdInd(char *response)
 {
     int typePos = 0;
@@ -1271,6 +1279,9 @@ void on_request_sim(int request, void *data, size_t datalen, RIL_Token t)
         break;
     case RIL_REQUEST_ENABLE_UICC_APPLICATIONS:
         requestEnableUICCApplication(data, datalen, t);
+        break;
+    case RIL_REQUEST_GET_UICC_APPLICATIONS_ENABLEMENT:
+        requestQueryUICCApplication(data, datalen, t);
         break;
     default:
         RLOGD("Request not supported");
