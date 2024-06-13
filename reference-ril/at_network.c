@@ -397,12 +397,8 @@ static void requestSetNetworlSelectionManual(void *data, size_t datalen, RIL_Tok
     ATResponse *p_response = NULL;
     RIL_NetworkOperator *operator = (RIL_NetworkOperator *)data;
 
-    if (operator->act != UNKNOWN) {
-        snprintf(cmd, sizeof(cmd), "AT+COPS=1,2,\"%s\"", operator->operatorNumeric);
-    } else {
-        snprintf(cmd, sizeof(cmd), "AT+COPS=1,2,\"%s\",%d",
-            operator->operatorNumeric, operator->act);
-    }
+    snprintf(cmd, sizeof(cmd), "AT+COPS=1,2,\"%s\",%d",
+        operator->operatorNumeric, (int)operator->act);
 
     err = at_send_command(cmd, &p_response);
     if (err < 0 || p_response->success == 0) {

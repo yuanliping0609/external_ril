@@ -236,6 +236,7 @@ static void dispatchGsmBrSmsCnf(Parcel &p, RequestInfo *pRI);
 static void dispatchCdmaBrSmsCnf(Parcel &p, RequestInfo *pRI);
 static void dispatchRilCdmaSmsWriteArgs(Parcel &p, RequestInfo *pRI);
 static void dispatchDataProfile(Parcel &p, RequestInfo *pRI);
+static void dispatchManualSelection(Parcel &p, RequestInfo *pRI);
 static int responseInts(Parcel &p, void *response, size_t responselen);
 static int responseStrings(Parcel &p, void *response, size_t responselen);
 static int responseString(Parcel &p, void *response, size_t responselen);
@@ -1648,6 +1649,45 @@ static void dispatchSetInitialAttachApn(Parcel &p, RequestInfo *pRI)
 
 #ifdef MEMSET_FREED
     memset(&pf, 0, sizeof(pf));
+#endif
+
+    return;
+invalid:
+    invalidCommandBlock(pRI);
+    return;
+}
+
+static void dispatchManualSelection(Parcel &p, RequestInfo *pRI) {
+    int32_t t;
+    status_t status;
+    RIL_NetworkOperator op;
+
+    RLOGD("dispatchManualSelection");
+    memset(&op, 0, sizeof(op));
+
+    op.operatorNumeric = strdupReadString(p);
+
+    status = p.readInt32(&t);
+    op.act = (RIL_RadioAccessNetworks)t;
+
+    startRequest;
+    appendPrintBuf("op=%s,act=%d", op.operatorNumeric, op.act);
+    closeRequest;
+    printRequest(pRI->token, pRI->pCI->requestNumber);
+
+    if (status != NO_ERROR) {
+        goto invalid;
+    }
+
+    s_callbacks.onRequest(pRI->pCI->requestNumber, &op, sizeof(RIL_NetworkOperator), pRI);
+
+#ifdef MEMSET_FREED
+    memsetString(op.operatorNumeric);
+#endif
+    free(op.operatorNumeric);
+
+#ifdef MEMSET_FREED
+    memset(&op, 0, sizeof(op));
 #endif
 
     return;
