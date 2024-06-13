@@ -792,6 +792,19 @@ error:
     at_response_free(p_response);
 }
 
+static void requestGetNeighboringCellIds(void *data, size_t datalen, RIL_Token t)
+{
+    (void)data;
+    (void)datalen;
+
+    RIL_CellInfo info;
+    memset(&info, 0, sizeof(info));
+    info.cellInfoType = RIL_CELL_INFO_TYPE_LTE;
+    info.registered = 1;
+
+    RIL_onRequestComplete(t, RIL_E_SUCCESS, &info, sizeof(info));
+}
+
 static void requestSetNetowkAutoMode(void *data, size_t datalen, RIL_Token t)
 {
     if (getSIMStatus() == SIM_ABSENT) {
@@ -1085,6 +1098,8 @@ void on_request_network(int request, void *data, size_t datalen, RIL_Token t)
         requestGetPreferredNetworkType(data, datalen, t);
         break;
     case RIL_REQUEST_GET_NEIGHBORING_CELL_IDS:
+        requestGetNeighboringCellIds(data, datalen, t);
+        break;
     case RIL_REQUEST_SET_LOCATION_UPDATES:
         RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
         break;
