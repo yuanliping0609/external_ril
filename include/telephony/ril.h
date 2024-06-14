@@ -326,6 +326,25 @@ typedef enum {
 
 #define RIL_RADIO_CAPABILITY_VERSION 1
 
+// Do we want to split Data from Voice and the use
+// RIL_RadioTechnology for get/setPreferredVoice/Data ?
+typedef enum {
+    PREF_NET_TYPE_GSM_WCDMA = 0, /* GSM/WCDMA (WCDMA preferred) */
+    PREF_NET_TYPE_GSM_ONLY = 1, /* GSM only */
+    PREF_NET_TYPE_WCDMA = 2, /* WCDMA  */
+    PREF_NET_TYPE_GSM_WCDMA_AUTO = 3, /* GSM/WCDMA (auto mode, according to PRL) */
+    PREF_NET_TYPE_CDMA_EVDO_AUTO = 4, /* CDMA and EvDo (auto mode, according to PRL) */
+    PREF_NET_TYPE_CDMA_ONLY = 5, /* CDMA only */
+    PREF_NET_TYPE_EVDO_ONLY = 6, /* EvDo only */
+    /* GSM/WCDMA, CDMA, and EvDo (auto mode, according to PRL) */
+    PREF_NET_TYPE_GSM_WCDMA_CDMA_EVDO_AUTO = 7,
+    PREF_NET_TYPE_LTE_CDMA_EVDO = 8, /* LTE, CDMA and EvDo */
+    PREF_NET_TYPE_LTE_GSM_WCDMA = 9, /* LTE, GSM/WCDMA */
+    PREF_NET_TYPE_LTE_CMDA_EVDO_GSM_WCDMA = 10, /* LTE, CDMA, EvDo, GSM/WCDMA */
+    PREF_NET_TYPE_LTE_ONLY = 11, /* LTE only */
+    PREF_NET_TYPE_LTE_WCDMA = 12 /* LTE/WCDMA */
+} RIL_PreferredNetworkType;
+
 /* Source for cdma subscription */
 typedef enum {
    CDMA_SUBSCRIPTION_SOURCE_RUIM_SIM = 0,
