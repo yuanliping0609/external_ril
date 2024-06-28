@@ -449,7 +449,7 @@ static void requestDataRegistrationState(void *data, size_t datalen, RIL_Token t
     (void)datalen;
 
     int err;
-    int *registration;
+    int *registration = NULL;
     char **responseStr = NULL;
     ATResponse *p_response = NULL;
     const char *cmd;
@@ -528,7 +528,7 @@ static void requestDataRegistrationState(void *data, size_t datalen, RIL_Token t
 
     free(registration);
     registration = NULL;
-    RIL_onRequestComplete(t, RIL_E_SUCCESS, responseStr, numElements * sizeof(responseStr));
+    RIL_onRequestComplete(t, RIL_E_SUCCESS, responseStr, numElements * sizeof(char *));
 
     for (j = 0; j < numElements; j ++) {
         free(responseStr[j]);
@@ -549,6 +549,11 @@ error:
 
         free(responseStr);
         responseStr = NULL;
+    }
+
+    if(registration != NULL) {
+        free(registration);
+        registration = NULL;
     }
 
     RLOGE("requestDataRegistrationState must never return an error when radio is on");
