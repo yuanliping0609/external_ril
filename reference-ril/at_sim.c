@@ -83,7 +83,10 @@ static int parseSimResponseLine(char* line, RIL_SIM_IO_Response* response)
 /** do post- SIM ready initialization */
 static void onSIMReady(void)
 {
-    at_send_command_singleline("AT+CSMS=1", "+CSMS:", NULL);
+    int err = at_send_command_singleline("AT+CSMS=1", "+CSMS:", NULL);
+    if (err < 0) {
+        return;
+    }
     /*
      * Always send SMS messages directly to the TE
      *
