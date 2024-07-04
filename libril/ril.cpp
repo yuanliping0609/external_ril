@@ -450,6 +450,10 @@ dispatchString (Parcel& p, RequestInfo *pRI) {
     char *string8 = NULL;
 
     string8 = strdupReadString(p);
+    if (!string8) {
+        invalidCommandBlock(pRI);
+        return;
+    }
 
     startRequest;
     appendPrintBuf("%s%s", printBuf, string8);
@@ -2528,6 +2532,11 @@ static int responseSimRefresh(Parcel &p, void *response, size_t responselen) {
     if (response == NULL && responselen != 0) {
         RLOGE("responseSimRefresh: invalid response: NULL");
         return RIL_ERRNO_INVALID_RESPONSE;
+    }
+
+    if (!response && !responselen) {
+        RLOGW("Empty response");
+        return 0;
     }
 
     startResponse;
