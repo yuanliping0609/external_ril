@@ -980,7 +980,7 @@ static void requestEnterSimPin(int request, void *data, size_t datalen, RIL_Toke
     } else
         goto error;
 
-    err = at_send_command_singleline(cmd, "+CPIN:", &p_response);
+    err = at_send_command(cmd, &p_response);
     free(cmd);
 
     if (err < 0 || p_response->success == 0) {
