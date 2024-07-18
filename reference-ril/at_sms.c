@@ -51,6 +51,7 @@ static void requestWriteSmsToSim(void *data, size_t datalen, RIL_Token t)
     asprintf(&cmd, "AT+CMGW=%d,%d", length, p_args->status);
 
     err = at_send_command_sms(cmd, p_args->pdu, "+CMGW:", &p_response);
+    free(cmd);
 
     if (err != 0 || p_response->success == 0)
         goto error;
