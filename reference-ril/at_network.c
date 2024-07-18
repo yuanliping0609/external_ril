@@ -680,7 +680,7 @@ error:
 static void requestVoiceRegistrationState(void *data, size_t datalen, RIL_Token t)
 {
     int err;
-    int *registration;
+    int *registration = NULL;
     char **responseStr = NULL;
     ATResponse *p_response = NULL;
     const char *cmd;
@@ -773,6 +773,7 @@ static void requestVoiceRegistrationState(void *data, size_t datalen, RIL_Token 
 
     return;
 error:
+    free(registration);
     if (responseStr) {
         for (j = 0; j < numElements; j ++) {
             free(responseStr[j]);
@@ -1027,8 +1028,12 @@ int parseRegistrationState(char *str, int *type, int *items, int **response)
         s_cid = resp[2];
     }
 
-    if (response)
+    if (response) {
         *response = resp;
+    } else {
+        free(resp);
+        resp = NULL;
+    }
 
     if (items)
         *items = commas + 1;
@@ -1081,6 +1086,7 @@ void on_request_network(int request, void *data, size_t datalen, RIL_Token t)
         break;
     case RIL_REQUEST_QUERY_AVAILABLE_NETWORKS:
         requestQueryAvailableNetworks(data, datalen, t);
+        break;
     case RIL_REQUEST_SET_BAND_MODE:
         RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
         break;
