@@ -15,11 +15,11 @@
 ** limitations under the License.
 */
 
-#include <limits.h>  /* for SIZE_MAX */
+#include <limits.h> /* for SIZE_MAX */
 
 #include <assert.h>
-#include <stdlib.h>
 #include <jstring.h>
+#include <stdlib.h>
 
 /**
  * Given a UTF-16 string, compute the length of the corresponding UTF-8
@@ -51,9 +51,8 @@ size_t strnlen16to8(const char16_t* utf16Str, size_t len)
      * but better be safe than sorry.
      */
 
-    /* Fast path for the usual case where 3*len is < SIZE_MAX-1.
-     */
-    if (len < (SIZE_MAX-1)/3) {
+    /* Fast path for the usual case where 3*len is < SIZE_MAX-1. */
+    if (len < (SIZE_MAX - 1) / 3) {
         while (len--) {
             unsigned int uic = *utf16Str++;
 
@@ -69,8 +68,8 @@ size_t strnlen16to8(const char16_t* utf16Str, size_t len)
 
     /* The slower but paranoid version */
     while (len--) {
-        unsigned int  uic     = *utf16Str++;
-        size_t        utf8Cur = utf8Len;
+        unsigned int uic = *utf16Str++;
+        size_t utf8Cur = utf8Len;
 
         if (uic > 0x07ff)
             utf8Len += 3;
@@ -80,16 +79,15 @@ size_t strnlen16to8(const char16_t* utf16Str, size_t len)
             utf8Len++;
 
         if (utf8Len < utf8Cur) /* overflow detected */
-            return SIZE_MAX-1;
+            return SIZE_MAX - 1;
     }
 
     /* don't return SIZE_MAX to avoid common user bug */
     if (utf8Len == SIZE_MAX)
-        utf8Len = SIZE_MAX-1;
+        utf8Len = SIZE_MAX - 1;
 
     return utf8Len;
 }
-
 
 /**
  * Convert a Java-Style UTF-16 string + length to a JNI-Style UTF-8 string.
@@ -126,19 +124,16 @@ char* strncpy16to8(char* utf8Str, const char16_t* utf16Str, size_t len)
         }
     }
 
-   *utf8cur = '\0';
+    *utf8cur = '\0';
 
-   return utf8Str;
+    return utf8Str;
 }
 
-/**
- * Convert a UTF-16 string to UTF-8.
- *
- */
-char * strndup16to8 (const char16_t* s, size_t n)
+/* Convert a UTF-16 string to UTF-8. */
+char* strndup16to8(const char16_t* s, size_t n)
 {
-    char*   ret;
-    size_t  len;
+    char* ret;
+    size_t len;
 
     if (s == NULL) {
         return NULL;
@@ -148,16 +143,15 @@ char * strndup16to8 (const char16_t* s, size_t n)
 
     /* We are paranoid, and we check for SIZE_MAX-1
      * too since it is an overflow value for our
-     * strnlen16to8 implementation.
-     */
-    if (len >= SIZE_MAX-1)
+     * strnlen16to8 implementation. */
+    if (len >= SIZE_MAX - 1)
         return NULL;
 
     ret = malloc(len + 1);
     if (ret == NULL)
         return NULL;
 
-    strncpy16to8 (ret, s, n);
+    strncpy16to8(ret, s, n);
 
     return ret;
 }

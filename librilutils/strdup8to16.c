@@ -15,14 +15,12 @@
 ** limitations under the License.
 */
 
-
 #include <assert.h>
-#include <stdlib.h>
-#include <limits.h>
 #include <jstring.h>
+#include <limits.h>
+#include <stdlib.h>
 /* See http://www.unicode.org/reports/tr22/ for discussion
- * on invalid sequences
- */
+ * on invalid sequences */
 
 #define UTF16_REPLACEMENT_CHAR 0xfffd
 
@@ -30,17 +28,18 @@
 #define UTF8_SEQ_LENGTH(ch) (((0xe5000000 >> ((ch >> 3) & 0x1e)) & 3) + 1)
 
 /* note: macro expands to multiple lines */
-#define UTF8_SHIFT_AND_MASK(unicode, byte)  \
-            (unicode)<<=6; (unicode) |= (0x3f & (byte));
+#define UTF8_SHIFT_AND_MASK(unicode, byte) \
+    (unicode) <<= 6;                       \
+    (unicode) |= (0x3f & (byte));
 
 #define UNICODE_UPPER_LIMIT 0x10fffd
 
 /*********************************fun-declare-befin*********************/
-char16_t * strcpylen8to16 (char16_t *utf16Str, const char*utf8Str,
-                                       int length, size_t *out_len);
-size_t strlen8to16 (const char* utf8Str);
-char16_t * strcpy8to16 (char16_t *utf16Str, const char*utf8Str,
-                                       size_t *out_len);
+char16_t* strcpylen8to16(char16_t* utf16Str, const char* utf8Str,
+    int length, size_t* out_len);
+size_t strlen8to16(const char* utf8Str);
+char16_t* strcpy8to16(char16_t* utf16Str, const char* utf8Str,
+    size_t* out_len);
 /**********************************fun-declare-end*********************/
 
 /*
@@ -58,8 +57,8 @@ static inline uint32_t getUtf32FromUtf8(const char** pUtf8Ptr)
     int seq_len;
     int i;
 
-    /* Mask for leader byte for lengths 1, 2, 3, and 4 respectively*/
-    static const char leaderMask[4] = {0xff, 0x1f, 0x0f, 0x07};
+    /* Mask for leader byte for lengths 1, 2, 3, and 4 respectively */
+    static const char leaderMask[4] = { 0xff, 0x1f, 0x0f, 0x07 };
 
     /* Bytes that start with bits "10" are not leading characters. */
     if (((**pUtf8Ptr) & 0xc0) == 0x80) {
@@ -70,14 +69,17 @@ static inline uint32_t getUtf32FromUtf8(const char** pUtf8Ptr)
     /* note we tolerate invalid leader 11111xxx here */
     seq_len = UTF8_SEQ_LENGTH(**pUtf8Ptr);
 
-    ret = (**pUtf8Ptr) & leaderMask [seq_len - 1];
+    ret = (**pUtf8Ptr) & leaderMask[seq_len - 1];
 
-    if (**pUtf8Ptr == '\0') return ret;
+    if (**pUtf8Ptr == '\0')
+        return ret;
 
     (*pUtf8Ptr)++;
-    for (i = 1; i < seq_len ; i++, (*pUtf8Ptr)++) {
-        if ((**pUtf8Ptr) == '\0') return UTF16_REPLACEMENT_CHAR;
-        if (((**pUtf8Ptr) & 0xc0) != 0x80) return UTF16_REPLACEMENT_CHAR;
+    for (i = 1; i < seq_len; i++, (*pUtf8Ptr)++) {
+        if ((**pUtf8Ptr) == '\0')
+            return UTF16_REPLACEMENT_CHAR;
+        if (((**pUtf8Ptr) & 0xc0) != 0x80)
+            return UTF16_REPLACEMENT_CHAR;
 
         UTF8_SHIFT_AND_MASK(ret, **pUtf8Ptr);
     }
@@ -89,23 +91,24 @@ static inline uint32_t getUtf32FromUtf8(const char** pUtf8Ptr)
  * out_len is an out parameter (which may not be null) containing the
  * length of the UTF-16 string (which may contain embedded \0's)
  */
-char16_t * strdup8to16 (const char* s, size_t *out_len)
+char16_t* strdup8to16(const char* s, size_t* out_len)
 {
-    char16_t *ret;
+    char16_t* ret;
     size_t len;
 
-    if (s == NULL) return NULL;
+    if (s == NULL)
+        return NULL;
 
     len = strlen8to16(s);
 
     // fail on overflow
-    if (len && SIZE_MAX/len < sizeof(char16_t))
+    if (len && SIZE_MAX / len < sizeof(char16_t))
         return NULL;
 
     // no plus-one here. UTF-16 strings are not null terminated
-    ret = (char16_t *) malloc (sizeof(char16_t) * len);
+    ret = (char16_t*)malloc(sizeof(char16_t) * len);
 
-    return strcpy8to16 (ret, s, out_len);
+    return strcpy8to16(ret, s, out_len);
 }
 
 /**
@@ -114,7 +117,7 @@ char16_t * strdup8to16 (const char* s, size_t *out_len)
  * The value returned is the number of UTF-16 characters required
  * to represent this string.
  */
-size_t strlen8to16 (const char* utf8Str)
+size_t strlen8to16(const char* utf8Str)
 {
     size_t len = 0;
     int ic;
@@ -127,8 +130,7 @@ size_t strlen8to16 (const char* utf8Str)
         if ((ic & 0xc0) == 0x80) {
             /* count the 0x80 extention bytes. if we have more than
              * expected, then start counting them because strcpy8to16
-             * will insert UTF16_REPLACEMENT_CHAR's
-             */
+             * will insert UTF16_REPLACEMENT_CHAR's */
             expected--;
             if (expected < 0) {
                 len++;
@@ -151,10 +153,10 @@ size_t strlen8to16 (const char* utf8Str)
  * out_len is an out parameter (which may not be null) containing the
  * length of the UTF-16 string (which may contain embedded \0's)
  */
-char16_t * strcpy8to16 (char16_t *utf16Str, const char*utf8Str,
-                                       size_t *out_len)
+char16_t* strcpy8to16(char16_t* utf16Str, const char* utf8Str,
+    size_t* out_len)
 {
-    char16_t *dest = utf16Str;
+    char16_t* dest = utf16Str;
 
     while (*utf8Str != '\0') {
         uint32_t ret;
@@ -162,13 +164,13 @@ char16_t * strcpy8to16 (char16_t *utf16Str, const char*utf8Str,
         ret = getUtf32FromUtf8(&utf8Str);
 
         if (ret <= 0xffff) {
-            *dest++ = (char16_t) ret;
-        } else if (ret <= UNICODE_UPPER_LIMIT)  {
+            *dest++ = (char16_t)ret;
+        } else if (ret <= UNICODE_UPPER_LIMIT) {
             /* Create surrogate pairs */
             /* See http://en.wikipedia.org/wiki/UTF-16/UCS-2#Method_for_code_points_in_Plane_1.2C_Plane_2 */
 
             *dest++ = 0xd800 | ((ret - 0x10000) >> 10);
-            *dest++ = 0xdc00 | ((ret - 0x10000) &  0x3ff);
+            *dest++ = 0xdc00 | ((ret - 0x10000) & 0x3ff);
         } else {
             *dest++ = UTF16_REPLACEMENT_CHAR;
         }
@@ -184,27 +186,27 @@ char16_t * strcpy8to16 (char16_t *utf16Str, const char*utf8Str,
  * out_len is an out parameter (which may not be null) containing the
  * length of the UTF-16 string (which may contain embedded \0's)
  */
-char16_t * strcpylen8to16 (char16_t *utf16Str, const char*utf8Str,
-                                       int length, size_t *out_len)
+char16_t* strcpylen8to16(char16_t* utf16Str, const char* utf8Str,
+    int length, size_t* out_len)
 {
     /* TODO: Share more of this code with the method above. Only 2 lines changed. */
 
-    char16_t *dest = utf16Str;
+    char16_t* dest = utf16Str;
 
-    const char *end = utf8Str + length; /* This line */
-    while (utf8Str < end) {             /* and this line changed. */
+    const char* end = utf8Str + length; /* This line */
+    while (utf8Str < end) { /* and this line changed. */
         uint32_t ret;
 
         ret = getUtf32FromUtf8(&utf8Str);
 
         if (ret <= 0xffff) {
-            *dest++ = (char16_t) ret;
-        } else if (ret <= UNICODE_UPPER_LIMIT)  {
+            *dest++ = (char16_t)ret;
+        } else if (ret <= UNICODE_UPPER_LIMIT) {
             /* Create surrogate pairs */
             /* See http://en.wikipedia.org/wiki/UTF-16/UCS-2#Method_for_code_points_in_Plane_1.2C_Plane_2 */
 
             *dest++ = 0xd800 | ((ret - 0x10000) >> 10);
-            *dest++ = 0xdc00 | ((ret - 0x10000) &  0x3ff);
+            *dest++ = 0xdc00 | ((ret - 0x10000) & 0x3ff);
         } else {
             *dest++ = UTF16_REPLACEMENT_CHAR;
         }

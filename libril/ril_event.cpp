@@ -18,15 +18,14 @@
 #define LOG_TAG "RIL_EVENT"
 #define NDEBUG 1
 
-#include <stdlib.h>
-#include <unistd.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <log/log_radio.h>
+#include <stdlib.h>
+#include <unistd.h>
 
-#include <sys/time.h>
-#include <ril_event.h>
 #include <pthread.h>
+#include <ril_event.h>
 #include <telephony/ril.h>
 
 static pthread_mutex_t listMutex;
@@ -36,22 +35,22 @@ static pthread_mutex_t listMutex;
 #define MUTEX_DESTROY() pthread_mutex_destroy(&listMutex)
 
 #ifndef timeradd
-#define timeradd(tvp, uvp, vvp)						\
-	do {								\
-		(vvp)->tv_sec = (tvp)->tv_sec + (uvp)->tv_sec;		\
-		(vvp)->tv_usec = (tvp)->tv_usec + (uvp)->tv_usec;       \
-		if ((vvp)->tv_usec >= 1000000) {			\
-			(vvp)->tv_sec++;				\
-			(vvp)->tv_usec -= 1000000;			\
-		}							\
-	} while (0)
+#define timeradd(tvp, uvp, vvp)                           \
+    do {                                                  \
+        (vvp)->tv_sec = (tvp)->tv_sec + (uvp)->tv_sec;    \
+        (vvp)->tv_usec = (tvp)->tv_usec + (uvp)->tv_usec; \
+        if ((vvp)->tv_usec >= 1000000) {                  \
+            (vvp)->tv_sec++;                              \
+            (vvp)->tv_usec -= 1000000;                    \
+        }                                                 \
+    } while (0)
 #endif
 
 #ifndef timercmp
-#define timercmp(a, b, op)               \
-        ((a)->tv_sec == (b)->tv_sec      \
-        ? (a)->tv_usec op (b)->tv_usec   \
-        : (a)->tv_sec op (b)->tv_sec)
+#define timercmp(a, b, op)                \
+    ((a)->tv_sec == (b)->tv_sec           \
+            ? (a)->tv_usec op(b)->tv_usec \
+            : (a)->tv_sec op(b)->tv_sec)
 #endif
 
 #ifndef timersub
@@ -63,21 +62,21 @@ static pthread_mutex_t listMutex;
             (res)->tv_usec += 1000000;                \
             (res)->tv_sec -= 1;                       \
         }                                             \
-    } while(0);
+    } while (0);
 #endif
 
 static fd_set readFds;
 static int nfds = 0;
 
-static struct ril_event * watch_table[MAX_FD_EVENTS];
+static struct ril_event* watch_table[MAX_FD_EVENTS];
 static struct ril_event timer_list;
 static struct ril_event pending_list;
 
 #define DEBUG 0
 
 #if DEBUG
-#define dlog(x...) RLOGD( x )
-static void dump_event(struct ril_event * ev)
+#define dlog(x...) RLOGD(x)
+static void dump_event(struct ril_event* ev)
 {
     dlog("~~~~ Event %x ~~~~", (unsigned int)ev);
     dlog("     next    = %x", (unsigned int)ev->next);
@@ -90,19 +89,23 @@ static void dump_event(struct ril_event * ev)
     dlog("~~~~~~~~~~~~~~~~~~");
 }
 #else
-#define dlog(x...) do {} while(0)
-#define dump_event(x) do {} while(0)
+#define dlog(x...) \
+    do {           \
+    } while (0)
+#define dump_event(x) \
+    do {              \
+    } while (0)
 #endif
 
-static void getNow(struct timeval * tv)
+static void getNow(struct timeval* tv)
 {
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
     tv->tv_sec = ts.tv_sec;
-    tv->tv_usec = ts.tv_nsec/1000;
+    tv->tv_usec = ts.tv_nsec / 1000;
 }
 
-static void init_list(struct ril_event * list)
+static void init_list(struct ril_event* list)
 {
     memset(list, 0, sizeof(struct ril_event));
     list->next = list;
@@ -110,7 +113,7 @@ static void init_list(struct ril_event * list)
     list->fd = -1;
 }
 
-static void addToList(struct ril_event * ev, struct ril_event * list)
+static void addToList(struct ril_event* ev, struct ril_event* list)
 {
     ev->next = list;
     ev->prev = list->prev;
@@ -119,7 +122,7 @@ static void addToList(struct ril_event * ev, struct ril_event * list)
     dump_event(ev);
 }
 
-static void removeFromList(struct ril_event * ev)
+static void removeFromList(struct ril_event* ev)
 {
     dlog("~~~~ +removeFromList ~~~~");
     dump_event(ev);
@@ -131,8 +134,7 @@ static void removeFromList(struct ril_event * ev)
     dlog("~~~~ -removeFromList ~~~~");
 }
 
-
-static void removeWatch(struct ril_event * ev, int index)
+static void removeWatch(struct ril_event* ev, int index)
 {
     dlog("~~~~ +removeWatch ~~~~");
     watch_table[index] = NULL;
@@ -140,11 +142,11 @@ static void removeWatch(struct ril_event * ev, int index)
 
     FD_CLR(ev->fd, &readFds);
 
-    if (ev->fd+1 == nfds) {
+    if (ev->fd + 1 == nfds) {
         int n = 0;
 
         for (int i = 0; i < MAX_FD_EVENTS; i++) {
-            struct ril_event * rev = watch_table[i];
+            struct ril_event* rev = watch_table[i];
 
             if ((rev != NULL) && (rev->fd > n)) {
                 n = rev->fd;
@@ -161,8 +163,8 @@ static void processTimeouts(void)
     dlog("~~~~ +processTimeouts ~~~~");
     MUTEX_ACQUIRE();
     struct timeval now;
-    struct ril_event * tev = timer_list.next;
-    struct ril_event * next;
+    struct ril_event* tev = timer_list.next;
+    struct ril_event* next;
 
     getNow(&now);
     // walk list, see if now >= ev->timeout for any events
@@ -180,13 +182,13 @@ static void processTimeouts(void)
     dlog("~~~~ -processTimeouts ~~~~");
 }
 
-static void processReadReadies(fd_set * rfds, int n)
+static void processReadReadies(fd_set* rfds, int n)
 {
     dlog("~~~~ +processReadReadies (%d) ~~~~", n);
     MUTEX_ACQUIRE();
 
     for (int i = 0; (i < MAX_FD_EVENTS) && (n > 0); i++) {
-        struct ril_event * rev = watch_table[i];
+        struct ril_event* rev = watch_table[i];
         if (rev != NULL && FD_ISSET(rev->fd, rfds)) {
             addToList(rev, &pending_list);
             if (rev->persist == false) {
@@ -203,9 +205,9 @@ static void processReadReadies(fd_set * rfds, int n)
 static void firePending(void)
 {
     dlog("~~~~ +firePending ~~~~");
-    struct ril_event * ev = pending_list.next;
+    struct ril_event* ev = pending_list.next;
     while (ev != &pending_list) {
-        struct ril_event * next = ev->next;
+        struct ril_event* next = ev->next;
         removeFromList(ev);
         ev->func(ev->fd, 0, ev->param);
         ev = next;
@@ -213,9 +215,9 @@ static void firePending(void)
     dlog("~~~~ -firePending ~~~~");
 }
 
-static int calcNextTimeout(struct timeval * tv)
+static int calcNextTimeout(struct timeval* tv)
 {
-    struct ril_event * tev = timer_list.next;
+    struct ril_event* tev = timer_list.next;
     struct timeval now;
 
     getNow(&now);
@@ -228,7 +230,7 @@ static int calcNextTimeout(struct timeval * tv)
 
     dlog("~~~~ now = %ds + %dus ~~~~", (int)now.tv_sec, (int)now.tv_usec);
     dlog("~~~~ next = %ds + %dus ~~~~",
-            (int)tev->timeout.tv_sec, (int)tev->timeout.tv_usec);
+        (int)tev->timeout.tv_sec, (int)tev->timeout.tv_usec);
     if (timercmp(&tev->timeout, &now, >)) {
         timersub(&tev->timeout, &now, tv);
     } else {
@@ -250,7 +252,7 @@ void ril_event_init(void)
 }
 
 // Initialize an event
-void ril_event_set(struct ril_event * ev, int fd, bool persist, ril_event_cb func, void * param)
+void ril_event_set(struct ril_event* ev, int fd, bool persist, ril_event_cb func, void* param)
 {
     dlog("~~~~ ril_event_set %x ~~~~", (unsigned int)ev);
     memset(ev, 0, sizeof(struct ril_event));
@@ -264,7 +266,7 @@ void ril_event_set(struct ril_event * ev, int fd, bool persist, ril_event_cb fun
 }
 
 // Add event to watch list
-void ril_event_add(struct ril_event * ev)
+void ril_event_add(struct ril_event* ev)
 {
     dlog("~~~~ +ril_event_add ~~~~");
     MUTEX_ACQUIRE();
@@ -275,7 +277,8 @@ void ril_event_add(struct ril_event * ev)
             dlog("~~~~ added at %d ~~~~", i);
             dump_event(ev);
             FD_SET(ev->fd, &readFds);
-            if (ev->fd >= nfds) nfds = ev->fd+1;
+            if (ev->fd >= nfds)
+                nfds = ev->fd + 1;
             dlog("~~~~ nfds = %d ~~~~", nfds);
             break;
         }
@@ -285,12 +288,12 @@ void ril_event_add(struct ril_event * ev)
 }
 
 // Add timer event
-void ril_timer_add(struct ril_event * ev, struct timeval * tv)
+void ril_timer_add(struct ril_event* ev, struct timeval* tv)
 {
     dlog("~~~~ +ril_timer_add ~~~~");
     MUTEX_ACQUIRE();
 
-    struct ril_event * list;
+    struct ril_event* list;
     if (tv != NULL) {
         // add to timer list
         list = timer_list.next;
@@ -301,8 +304,8 @@ void ril_timer_add(struct ril_event * ev, struct timeval * tv)
         timeradd(&now, tv, &ev->timeout);
 
         // keep list sorted
-        while (timercmp(&list->timeout, &ev->timeout, < )
-                && (list != &timer_list)) {
+        while (timercmp(&list->timeout, &ev->timeout, <)
+            && (list != &timer_list)) {
             list = list->next;
         }
         // list now points to the first event older than ev
@@ -314,7 +317,7 @@ void ril_timer_add(struct ril_event * ev, struct timeval * tv)
 }
 
 // Remove event from watch or timer list
-void ril_event_del(struct ril_event * ev)
+void ril_event_del(struct ril_event* ev)
 {
     dlog("~~~~ +ril_event_del ~~~~");
     MUTEX_ACQUIRE();
@@ -331,17 +334,19 @@ void ril_event_del(struct ril_event * ev)
 }
 
 #if DEBUG
-static void printReadies(fd_set * rfds)
+static void printReadies(fd_set* rfds)
 {
     for (int i = 0; (i < MAX_FD_EVENTS); i++) {
-        struct ril_event * rev = watch_table[i];
+        struct ril_event* rev = watch_table[i];
         if (rev != NULL && FD_ISSET(rev->fd, rfds)) {
-          dlog("DON: fd=%d is ready", rev->fd);
+            dlog("DON: fd=%d is ready", rev->fd);
         }
     }
 }
 #else
-#define printReadies(rfds) do {} while(0)
+#define printReadies(rfds) \
+    do {                   \
+    } while (0)
 #endif
 
 void ril_event_loop(void)
@@ -349,11 +354,9 @@ void ril_event_loop(void)
     int n;
     fd_set rfds;
     struct timeval tv;
-    struct timeval * ptv;
-
+    struct timeval* ptv;
 
     for (;;) {
-
         // make local copy of read fd_set
         memcpy(&rfds, &readFds, sizeof(fd_set));
         if (-1 == calcNextTimeout(&tv)) {
@@ -369,7 +372,8 @@ void ril_event_loop(void)
         printReadies(&rfds);
         dlog("~~~~ %d events fired ~~~~", n);
         if (n < 0) {
-            if (errno == EINTR) continue;
+            if (errno == EINTR)
+                continue;
 
             RLOGE("ril_event: select error (%d)", errno);
             // bail?

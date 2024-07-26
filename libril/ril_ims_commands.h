@@ -14,8 +14,9 @@
 ** See the License for the specific language governing permissions and
 ** limitations under the License.
 */
-    {0, NULL, NULL},                   // none
+// none
+{ 0, NULL, NULL },
     // 500
-    {RIL_REQUEST_IMS_REG_STATE_CHANGE, dispatchInts, responseVoid},
-    {RIL_REQUEST_IMS_REGISTRATION_STATE, dispatchVoid, responseImsStatus},
-    {RIL_REQUEST_IMS_SET_SERVICE_STATUS, dispatchInts, responseVoid}
+    { RIL_REQUEST_IMS_REG_STATE_CHANGE, dispatchInts, responseVoid },
+    { RIL_REQUEST_IMS_REGISTRATION_STATE, dispatchVoid, responseImsStatus },
+    { RIL_REQUEST_IMS_SET_SERVICE_STATUS, dispatchInts, responseVoid },

@@ -17,34 +17,34 @@
 #define LOG_TAG "LOCAL_SOCKET"
 #define NDEBUG 1
 
+#include <errno.h>
+#include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <fcntl.h>
-#include <errno.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 
-#include <telephony/ril.h>
 #include <local_socket.h>
+#include <telephony/ril.h>
 
 #define SOCKET_NAME_RIL "rild"
 
-static const char *ENV[32];
+static const char* ENV[32];
 
-int add_environment(const char *key, const char *val)
+int add_environment(const char* key, const char* val)
 {
     int n;
 
     for (n = 0; n < 31; n++) {
         if (!ENV[n]) {
             size_t len = strlen(key) + strlen(val) + 2;
-            char *entry = malloc(len);
+            char* entry = malloc(len);
             snprintf(entry, len, "%s=%s", key, val);
             ENV[n] = entry;
             RLOGD("add_environment success entry is %s\n", ENV[n]);
             RLOGD("add_environment success val is %s\n", val);
-            setenv(ENV[n],val,1);
+            setenv(ENV[n], val, 1);
             return 0;
         }
     }
@@ -52,14 +52,14 @@ int add_environment(const char *key, const char *val)
     return 1;
 }
 
-static void publish_socket(const char *name, int fd)
+static void publish_socket(const char* name, int fd)
 {
     char key[64] = LOCAL_SOCKET_ENV_PREFIX;
     char val[64];
 
     strlcpy(key + sizeof(LOCAL_SOCKET_ENV_PREFIX) - 1,
-            name,
-            sizeof(key) - sizeof(LOCAL_SOCKET_ENV_PREFIX));
+        name,
+        sizeof(key) - sizeof(LOCAL_SOCKET_ENV_PREFIX));
     snprintf(val, sizeof(val), "%d", fd);
     add_environment(key, val);
 
@@ -69,16 +69,16 @@ static void publish_socket(const char *name, int fd)
 
 int ril_socket_init(void)
 {
-    char *name = SOCKET_NAME_RIL;
+    char* name = SOCKET_NAME_RIL;
     int serverScoket;
     int socket_type = SOCK_STREAM;
 
     serverScoket = ril_socket_create(name, socket_type);
     RLOGD("start ril_socket_create success %d\n", serverScoket);
 
-    if(serverScoket >= 0) {
+    if (serverScoket >= 0) {
         // put it into envirment
-        publish_socket(name,serverScoket);
+        publish_socket(name, serverScoket);
         return 0;
     } else {
         return -1;

@@ -16,7 +16,7 @@
 */
 #include <stdbool.h>
 
-/** returns 1 if line starts with prefix, 0 if it does not */
-int strStartsWith(const char *line, const char *prefix);
-/** Returns true iff running this process in an emulator VM */
+/* returns 1 if line starts with prefix, 0 if it does not */
+int strStartsWith(const char* line, const char* prefix);
+/* Returns true iff running this process in an emulator VM */
 bool isInEmulator(void);

@@ -19,25 +19,27 @@
 
 #include <stdio.h>
 #include <sys/cdefs.h>
+
 #include <log/log_radio.h>
-#include "atchannel.h"
-#include "at_tok.h"
-#include "misc.h"
+
 #include "at_modem.h"
 #include "at_network.h"
 #include "at_ril.h"
 #include "at_sim.h"
+#include "at_tok.h"
+#include "atchannel.h"
+#include "misc.h"
 
 // CDMA Subscription Source
 #define SSOURCE(mdminfo) ((mdminfo)->subscription_source)
 
-static const struct timeval TIMEVAL_SIMPOLL = {1,0};
+static const struct timeval TIMEVAL_SIMPOLL = { 1, 0 };
 static int areUiccApplicationsEnabled = true;
 
 // STK
 static bool s_stkServiceRunning = false;
-static char *s_stkUnsolResponse = NULL;
-extern uint8_t *convertHexStringToBytes(void *response, size_t responseLen);
+static char* s_stkUnsolResponse = NULL;
+extern uint8_t* convertHexStringToBytes(void* response, size_t responseLen);
 
 static int s_mcc = 0;
 static int s_mnc = 0;
@@ -50,18 +52,18 @@ typedef enum {
 } StkUnsolEvent;
 
 typedef enum {
-    STK_RUN_AT              = 0x34,
-    STK_SEND_DTMF           = 0x14,
-    STK_SEND_SMS            = 0x13,
-    STK_SEND_SS             = 0x11,
-    STK_SEND_USSD           = 0x12,
-    STK_PLAY_TONE           = 0x20,
-    STK_OPEN_CHANNEL        = 0x40,
-    STK_CLOSE_CHANNEL       = 0x41,
-    STK_RECEIVE_DATA        = 0x42,
-    STK_SEND_DATA           = 0x43,
-    STK_GET_CHANNEL_STATUS  = 0x44,
-    STK_REFRESH             = 0x01,
+    STK_RUN_AT = 0x34,
+    STK_SEND_DTMF = 0x14,
+    STK_SEND_SMS = 0x13,
+    STK_SEND_SS = 0x11,
+    STK_SEND_USSD = 0x12,
+    STK_PLAY_TONE = 0x20,
+    STK_OPEN_CHANNEL = 0x40,
+    STK_CLOSE_CHANNEL = 0x41,
+    STK_RECEIVE_DATA = 0x42,
+    STK_SEND_DATA = 0x43,
+    STK_GET_CHANNEL_STATUS = 0x44,
+    STK_REFRESH = 0x01,
 } StkCmdType;
 
 static int parseSimResponseLine(char* line, RIL_SIM_IO_Response* response)
@@ -69,21 +71,25 @@ static int parseSimResponseLine(char* line, RIL_SIM_IO_Response* response)
     int err;
 
     err = at_tok_start(&line);
-    if (err < 0) return err;
+    if (err < 0)
+        return err;
     err = at_tok_nextint(&line, &response->sw1);
-    if (err < 0) return err;
+    if (err < 0)
+        return err;
     err = at_tok_nextint(&line, &response->sw2);
-    if (err < 0) return err;
+    if (err < 0)
+        return err;
 
     if (at_tok_hasmore(&line)) {
         err = at_tok_nextstr(&line, &response->simResponse);
-        if (err < 0) return err;
+        if (err < 0)
+            return err;
     }
 
     return 0;
 }
 
-/** do post- SIM ready initialization */
+/* do post- SIM ready initialization */
 static void onSIMReady(void)
 {
     int err = at_send_command_singleline("AT+CSMS=1", "+CSMS:", NULL);
@@ -103,7 +109,7 @@ static void onSIMReady(void)
     at_send_command("AT+CNMI=1,2,2,1,1", NULL);
 }
 
-static void requestOperator(void *data, size_t datalen, RIL_Token t)
+static void requestOperator(void* data, size_t datalen, RIL_Token t)
 {
     (void)data;
     (void)datalen;
@@ -111,11 +117,11 @@ static void requestOperator(void *data, size_t datalen, RIL_Token t)
     int err;
     int i;
     int skip;
-    ATLine *p_cur;
-    char *response[3];
+    ATLine* p_cur;
+    char* response[3];
 
     memset(response, 0, sizeof(response));
-    ATResponse *p_response = NULL;
+    ATResponse* p_response = NULL;
 
     err = at_send_command_multiline(
         "AT+COPS=3,0;+COPS?;+COPS=3,1;+COPS?;+COPS=3,2;+COPS?",
@@ -127,19 +133,19 @@ static void requestOperator(void *data, size_t datalen, RIL_Token t)
      * +COPS: 0,2,"310170"
      */
 
-    if (err != 0) goto error;
+    if (err != 0)
+        goto error;
 
-    for (i = 0, p_cur = p_response->p_intermediates
-            ; p_cur != NULL
-            ; p_cur = p_cur->p_next, i ++
-    ) {
-        char *line = p_cur->line;
+    for (i = 0, p_cur = p_response->p_intermediates; p_cur != NULL; p_cur = p_cur->p_next, i++) {
+        char* line = p_cur->line;
 
         err = at_tok_start(&line);
-        if (err < 0) goto error;
+        if (err < 0)
+            goto error;
 
         err = at_tok_nextint(&line, &skip);
-        if (err < 0) goto error;
+        if (err < 0)
+            goto error;
 
         // If we're unregistered, we may just get
         // a "+COPS: 0" response
@@ -149,7 +155,8 @@ static void requestOperator(void *data, size_t datalen, RIL_Token t)
         }
 
         err = at_tok_nextint(&line, &skip);
-        if (err < 0) goto error;
+        if (err < 0)
+            goto error;
 
         // a "+COPS: 0, n" response is also possible
         if (!at_tok_hasmore(&line)) {
@@ -158,7 +165,8 @@ static void requestOperator(void *data, size_t datalen, RIL_Token t)
         }
 
         err = at_tok_nextstr(&line, &(response[i]));
-        if (err < 0) goto error;
+        if (err < 0)
+            goto error;
         // Simple assumption that mcc and mnc are 3 digits each
         int length = strlen(response[i]);
         if (length == 6) {
@@ -193,19 +201,19 @@ error:
     at_response_free(p_response);
 }
 
-static void requestSimOpenChannel(void *data, size_t datalen, RIL_Token t)
+static void requestSimOpenChannel(void* data, size_t datalen, RIL_Token t)
 {
-    ATResponse *p_response = NULL;
+    ATResponse* p_response = NULL;
     int32_t session_id;
     int err;
-    char cmd[64] = {0};
+    char cmd[64] = { 0 };
     char complex;
-    char *line = NULL;
-    char *aidPtr = NULL;
+    char* line = NULL;
+    char* aidPtr = NULL;
     int err_no = RIL_E_GENERIC_FAILURE;
-    RIL_Sim_Open_Channel ril_response ={0};
+    RIL_Sim_Open_Channel ril_response = { 0 };
 
-    aidPtr = (char *)data;
+    aidPtr = (char*)data;
     if (NULL == aidPtr) {
         goto error;
     } else {
@@ -225,8 +233,8 @@ static void requestSimOpenChannel(void *data, size_t datalen, RIL_Token t)
         goto error;
     } else {
         if (sscanf(line, "%" SCNd32 "%c", &session_id, &complex) != 1) {
-           RLOGE("Invalid AT response, expected integer, was '%s'", line);
-           goto error;
+            RLOGE("Invalid AT response, expected integer, was '%s'", line);
+            goto error;
         }
     }
 
@@ -241,9 +249,9 @@ error:
     return;
 }
 
-static void requestSimCloseChannel(void *data, size_t datalen, RIL_Token t)
+static void requestSimCloseChannel(void* data, size_t datalen, RIL_Token t)
 {
-    ATResponse *p_response = NULL;
+    ATResponse* p_response = NULL;
     int32_t session_id;
     int err;
     char cmd[32];
@@ -254,7 +262,7 @@ static void requestSimCloseChannel(void *data, size_t datalen, RIL_Token t)
         return;
     }
 
-    session_id = ((int32_t *)data)[0];
+    session_id = ((int32_t*)data)[0];
     if (session_id == 0) {
         RIL_onRequestComplete(t, RIL_E_INVALID_ARGUMENTS, NULL, 0);
         return;
@@ -272,17 +280,17 @@ static void requestSimCloseChannel(void *data, size_t datalen, RIL_Token t)
     at_response_free(p_response);
 }
 
-static void requestSimTransmitApduChannel(void *data,
+static void requestSimTransmitApduChannel(void* data,
     size_t datalen, RIL_Token t)
 {
-    ATResponse *p_response = NULL;
+    ATResponse* p_response = NULL;
     int err;
     int len = 0;
-    char *cmd;
-    char *line = NULL;
+    char* cmd;
+    char* line = NULL;
     size_t cmd_size;
-    RIL_SIM_IO_Response sr = {0};
-    RIL_SIM_APDU *apdu = (RIL_SIM_APDU *)data;
+    RIL_SIM_IO_Response sr = { 0 };
+    RIL_SIM_APDU* apdu = (RIL_SIM_APDU*)data;
 
     if (apdu == NULL || datalen != sizeof(RIL_SIM_APDU)) {
         RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
@@ -304,16 +312,20 @@ static void requestSimTransmitApduChannel(void *data,
 
     line = p_response->p_intermediates->line;
     err = at_tok_start(&line);
-    if (err < 0) goto error;
+    if (err < 0)
+        goto error;
 
     err = at_tok_nextint(&line, &len);
-    if (err < 0) goto error;
+    if (err < 0)
+        goto error;
 
     err = at_tok_nextstr(&line, &(sr.simResponse));
-    if (err < 0) goto error;
+    if (err < 0)
+        goto error;
 
     len = strlen(sr.simResponse);
-    if (len < 4) goto error;
+    if (len < 4)
+        goto error;
 
     sscanf(&(sr.simResponse[len - 4]), "%02x%02x", &(sr.sw1), &(sr.sw2));
     sr.simResponse[len - 4] = '\0';
@@ -327,19 +339,19 @@ error:
     at_response_free(p_response);
 }
 
-static void requestTransmitApduBasic(void *data, size_t datalen, RIL_Token t)
+static void requestTransmitApduBasic(void* data, size_t datalen, RIL_Token t)
 {
     (void)datalen;
 
     int err, len;
-    char *cmd = NULL;
-    char *line = NULL;
-    RIL_SIM_APDU *p_args = NULL;
-    ATResponse *p_response = NULL;
+    char* cmd = NULL;
+    char* line = NULL;
+    RIL_SIM_APDU* p_args = NULL;
+    ATResponse* p_response = NULL;
     RIL_SIM_IO_Response sr;
 
     memset(&sr, 0, sizeof(sr));
-    p_args = (RIL_SIM_APDU *)data;
+    p_args = (RIL_SIM_APDU*)data;
 
     if ((p_args->data == NULL) || (strlen(p_args->data) == 0)) {
         if (p_args->p3 < 0) {
@@ -365,13 +377,16 @@ static void requestTransmitApduBasic(void *data, size_t datalen, RIL_Token t)
 
     line = p_response->p_intermediates->line;
     err = at_tok_start(&line);
-    if (err < 0) goto error;
+    if (err < 0)
+        goto error;
 
     err = at_tok_nextint(&line, &len);
-    if (err < 0) goto error;
+    if (err < 0)
+        goto error;
 
     err = at_tok_nextstr(&line, &(sr.simResponse));
-    if (err < 0) goto error;
+    if (err < 0)
+        goto error;
 
     sscanf(&(sr.simResponse[len - 4]), "%02x%02x", &(sr.sw1), &(sr.sw2));
     sr.simResponse[len - 4] = '\0';
@@ -385,34 +400,34 @@ error:
     at_response_free(p_response);
 }
 
-#define TYPE_EF                                 4
-#define RESPONSE_EF_SIZE                        15
-#define TYPE_FILE_DES_LEN                       5
-#define RESPONSE_DATA_FILE_DES_FLAG             2
-#define RESPONSE_DATA_FILE_DES_LEN_FLAG         3
-#define RESPONSE_DATA_FILE_TYPE                 6
-#define RESPONSE_DATA_FILE_SIZE_1               2
-#define RESPONSE_DATA_FILE_SIZE_2               3
-#define RESPONSE_DATA_STRUCTURE                 13
-#define RESPONSE_DATA_RECORD_LENGTH             14
-#define RESPONSE_DATA_FILE_RECORD_LEN_1         6
-#define RESPONSE_DATA_FILE_RECORD_LEN_2         7
-#define EF_TYPE_TRANSPARENT                     0x01
-#define EF_TYPE_LINEAR_FIXED                    0x02
-#define EF_TYPE_CYCLIC                          0x06
-#define USIM_DATA_OFFSET_2                      2
-#define USIM_DATA_OFFSET_3                      3
-#define USIM_FILE_DES_TAG                       0x82
-#define USIM_FILE_SIZE_TAG                      0x80
+#define TYPE_EF 4
+#define RESPONSE_EF_SIZE 15
+#define TYPE_FILE_DES_LEN 5
+#define RESPONSE_DATA_FILE_DES_FLAG 2
+#define RESPONSE_DATA_FILE_DES_LEN_FLAG 3
+#define RESPONSE_DATA_FILE_TYPE 6
+#define RESPONSE_DATA_FILE_SIZE_1 2
+#define RESPONSE_DATA_FILE_SIZE_2 3
+#define RESPONSE_DATA_STRUCTURE 13
+#define RESPONSE_DATA_RECORD_LENGTH 14
+#define RESPONSE_DATA_FILE_RECORD_LEN_1 6
+#define RESPONSE_DATA_FILE_RECORD_LEN_2 7
+#define EF_TYPE_TRANSPARENT 0x01
+#define EF_TYPE_LINEAR_FIXED 0x02
+#define EF_TYPE_CYCLIC 0x06
+#define USIM_DATA_OFFSET_2 2
+#define USIM_DATA_OFFSET_3 3
+#define USIM_FILE_DES_TAG 0x82
+#define USIM_FILE_SIZE_TAG 0x80
 
-/** Returns SIM_NOT_READY on error */
+/* Returns SIM_NOT_READY on error */
 SIM_Status getSIMStatus(void)
 {
-    ATResponse *p_response = NULL;
+    ATResponse* p_response = NULL;
     int err;
     int ret;
-    char *cpinLine;
-    char *cpinResult;
+    char* cpinLine;
+    char* cpinResult;
 
     RLOGD("getSIMStatus(). RadioState: %d", getRadioState());
     err = at_send_command_singleline("AT+CPIN?", "+CPIN:", &p_response);
@@ -423,16 +438,16 @@ SIM_Status getSIMStatus(void)
     }
 
     switch (at_get_cme_error(p_response)) {
-        case CME_SUCCESS:
-            break;
+    case CME_SUCCESS:
+        break;
 
-        case CME_SIM_NOT_INSERTED:
-            ret = SIM_ABSENT;
-            goto done;
+    case CME_SIM_NOT_INSERTED:
+        ret = SIM_ABSENT;
+        goto done;
 
-        default:
-            ret = SIM_NOT_READY;
-            goto done;
+    default:
+        ret = SIM_NOT_READY;
+        goto done;
     }
 
     /* CPIN? has succeeded, now look at the result */
@@ -482,7 +497,7 @@ done:
  *  AT+CPIN, AT+CSMS, AT+CNMI, AT+CRSM
  *  (all SMS-related commands)
  */
-void pollSIMState(void *param)
+void pollSIMState(void* param)
 {
     (void)param;
 
@@ -492,31 +507,29 @@ void pollSIMState(void *param)
     }
 
     switch (getSIMStatus()) {
-        case SIM_ABSENT:
-        case SIM_PIN:
-        case SIM_PUK:
-        case SIM_NETWORK_PERSONALIZATION:
-        default:
-            RLOGI("SIM ABSENT or LOCKED");
-            RIL_onUnsolicitedResponse(RIL_UNSOL_RESPONSE_SIM_STATUS_CHANGED, NULL, 0);
+    case SIM_ABSENT:
+    case SIM_PIN:
+    case SIM_PUK:
+    case SIM_NETWORK_PERSONALIZATION:
+    default:
+        RLOGI("SIM ABSENT or LOCKED");
+        RIL_onUnsolicitedResponse(RIL_UNSOL_RESPONSE_SIM_STATUS_CHANGED, NULL, 0);
         return;
 
-        case SIM_NOT_READY:
-            RIL_requestTimedCallback (pollSIMState, NULL, &TIMEVAL_SIMPOLL);
+    case SIM_NOT_READY:
+        RIL_requestTimedCallback(pollSIMState, NULL, &TIMEVAL_SIMPOLL);
         return;
 
-        case SIM_READY:
-            RLOGI("SIM_READY");
-            onSIMReady();
-            RIL_onUnsolicitedResponse(RIL_UNSOL_RESPONSE_SIM_STATUS_CHANGED, NULL, 0);
+    case SIM_READY:
+        RLOGI("SIM_READY");
+        onSIMReady();
+        RIL_onUnsolicitedResponse(RIL_UNSOL_RESPONSE_SIM_STATUS_CHANGED, NULL, 0);
         return;
     }
 }
 
-/**
- * Free the card status returned by getCardStatus
- */
-static void freeCardStatus(RIL_CardStatus_v1_5 *p_card_status)
+/* Free the card status returned by getCardStatus */
+static void freeCardStatus(RIL_CardStatus_v1_5* p_card_status)
 {
     if (p_card_status == NULL) {
         return;
@@ -526,10 +539,10 @@ static void freeCardStatus(RIL_CardStatus_v1_5 *p_card_status)
     free(p_card_status);
 }
 
-static void getIccId(char *iccid, int size)
+static void getIccId(char* iccid, int size)
 {
     int err = 0;
-    ATResponse *p_response = NULL;
+    ATResponse* p_response = NULL;
 
     if (iccid == NULL) {
         RLOGE("iccid buffer is null");
@@ -552,63 +565,63 @@ error:
  * This must be freed using freeCardStatus.
  * @return: On success returns RIL_E_SUCCESS
  */
-static int getCardStatus(RIL_CardStatus_v1_5 **pp_card_status)
+static int getCardStatus(RIL_CardStatus_v1_5** pp_card_status)
 {
     static RIL_AppStatus app_status_array[] = {
         // SIM_ABSENT = 0
         { RIL_APPTYPE_UNKNOWN, RIL_APPSTATE_UNKNOWN, RIL_PERSOSUBSTATE_UNKNOWN,
-          NULL, NULL, 0, RIL_PINSTATE_UNKNOWN, RIL_PINSTATE_UNKNOWN },
+            NULL, NULL, 0, RIL_PINSTATE_UNKNOWN, RIL_PINSTATE_UNKNOWN },
         // SIM_NOT_READY = 1
         { RIL_APPTYPE_USIM, RIL_APPSTATE_DETECTED, RIL_PERSOSUBSTATE_UNKNOWN,
-          NULL, NULL, 0, RIL_PINSTATE_UNKNOWN, RIL_PINSTATE_UNKNOWN },
+            NULL, NULL, 0, RIL_PINSTATE_UNKNOWN, RIL_PINSTATE_UNKNOWN },
         // SIM_READY = 2
         { RIL_APPTYPE_USIM, RIL_APPSTATE_READY, RIL_PERSOSUBSTATE_READY,
-          NULL, NULL, 0, RIL_PINSTATE_UNKNOWN, RIL_PINSTATE_UNKNOWN },
+            NULL, NULL, 0, RIL_PINSTATE_UNKNOWN, RIL_PINSTATE_UNKNOWN },
         // SIM_PIN = 3
         { RIL_APPTYPE_USIM, RIL_APPSTATE_PIN, RIL_PERSOSUBSTATE_UNKNOWN,
-          NULL, NULL, 0, RIL_PINSTATE_ENABLED_NOT_VERIFIED, RIL_PINSTATE_UNKNOWN },
+            NULL, NULL, 0, RIL_PINSTATE_ENABLED_NOT_VERIFIED, RIL_PINSTATE_UNKNOWN },
         // SIM_PUK = 4
         { RIL_APPTYPE_USIM, RIL_APPSTATE_PUK, RIL_PERSOSUBSTATE_UNKNOWN,
-          NULL, NULL, 0, RIL_PINSTATE_ENABLED_BLOCKED, RIL_PINSTATE_UNKNOWN },
+            NULL, NULL, 0, RIL_PINSTATE_ENABLED_BLOCKED, RIL_PINSTATE_UNKNOWN },
         // SIM_NETWORK_PERSONALIZATION = 5
         { RIL_APPTYPE_USIM, RIL_APPSTATE_SUBSCRIPTION_PERSO, RIL_PERSOSUBSTATE_SIM_NETWORK,
-          NULL, NULL, 0, RIL_PINSTATE_ENABLED_NOT_VERIFIED, RIL_PINSTATE_UNKNOWN },
+            NULL, NULL, 0, RIL_PINSTATE_ENABLED_NOT_VERIFIED, RIL_PINSTATE_UNKNOWN },
         // RUIM_ABSENT = 6
         { RIL_APPTYPE_UNKNOWN, RIL_APPSTATE_UNKNOWN, RIL_PERSOSUBSTATE_UNKNOWN,
-          NULL, NULL, 0, RIL_PINSTATE_UNKNOWN, RIL_PINSTATE_UNKNOWN },
+            NULL, NULL, 0, RIL_PINSTATE_UNKNOWN, RIL_PINSTATE_UNKNOWN },
         // RUIM_NOT_READY = 7
         { RIL_APPTYPE_RUIM, RIL_APPSTATE_DETECTED, RIL_PERSOSUBSTATE_UNKNOWN,
-          NULL, NULL, 0, RIL_PINSTATE_UNKNOWN, RIL_PINSTATE_UNKNOWN },
+            NULL, NULL, 0, RIL_PINSTATE_UNKNOWN, RIL_PINSTATE_UNKNOWN },
         // RUIM_READY = 8
         { RIL_APPTYPE_RUIM, RIL_APPSTATE_READY, RIL_PERSOSUBSTATE_READY,
-          NULL, NULL, 0, RIL_PINSTATE_UNKNOWN, RIL_PINSTATE_UNKNOWN },
+            NULL, NULL, 0, RIL_PINSTATE_UNKNOWN, RIL_PINSTATE_UNKNOWN },
         // RUIM_PIN = 9
         { RIL_APPTYPE_RUIM, RIL_APPSTATE_PIN, RIL_PERSOSUBSTATE_UNKNOWN,
-          NULL, NULL, 0, RIL_PINSTATE_ENABLED_NOT_VERIFIED, RIL_PINSTATE_UNKNOWN },
+            NULL, NULL, 0, RIL_PINSTATE_ENABLED_NOT_VERIFIED, RIL_PINSTATE_UNKNOWN },
         // RUIM_PUK = 10
         { RIL_APPTYPE_RUIM, RIL_APPSTATE_PUK, RIL_PERSOSUBSTATE_UNKNOWN,
-          NULL, NULL, 0, RIL_PINSTATE_ENABLED_BLOCKED, RIL_PINSTATE_UNKNOWN },
+            NULL, NULL, 0, RIL_PINSTATE_ENABLED_BLOCKED, RIL_PINSTATE_UNKNOWN },
         // RUIM_NETWORK_PERSONALIZATION = 11
         { RIL_APPTYPE_RUIM, RIL_APPSTATE_SUBSCRIPTION_PERSO, RIL_PERSOSUBSTATE_SIM_NETWORK,
-           NULL, NULL, 0, RIL_PINSTATE_ENABLED_NOT_VERIFIED, RIL_PINSTATE_UNKNOWN },
+            NULL, NULL, 0, RIL_PINSTATE_ENABLED_NOT_VERIFIED, RIL_PINSTATE_UNKNOWN },
         // ISIM_ABSENT = 12
         { RIL_APPTYPE_UNKNOWN, RIL_APPSTATE_UNKNOWN, RIL_PERSOSUBSTATE_UNKNOWN,
-          NULL, NULL, 0, RIL_PINSTATE_UNKNOWN, RIL_PINSTATE_UNKNOWN },
+            NULL, NULL, 0, RIL_PINSTATE_UNKNOWN, RIL_PINSTATE_UNKNOWN },
         // ISIM_NOT_READY = 13
         { RIL_APPTYPE_ISIM, RIL_APPSTATE_DETECTED, RIL_PERSOSUBSTATE_UNKNOWN,
-          NULL, NULL, 0, RIL_PINSTATE_UNKNOWN, RIL_PINSTATE_UNKNOWN },
+            NULL, NULL, 0, RIL_PINSTATE_UNKNOWN, RIL_PINSTATE_UNKNOWN },
         // ISIM_READY = 14
         { RIL_APPTYPE_ISIM, RIL_APPSTATE_READY, RIL_PERSOSUBSTATE_READY,
-          NULL, NULL, 0, RIL_PINSTATE_UNKNOWN, RIL_PINSTATE_UNKNOWN },
+            NULL, NULL, 0, RIL_PINSTATE_UNKNOWN, RIL_PINSTATE_UNKNOWN },
         // ISIM_PIN = 15
         { RIL_APPTYPE_ISIM, RIL_APPSTATE_PIN, RIL_PERSOSUBSTATE_UNKNOWN,
-          NULL, NULL, 0, RIL_PINSTATE_ENABLED_NOT_VERIFIED, RIL_PINSTATE_UNKNOWN },
+            NULL, NULL, 0, RIL_PINSTATE_ENABLED_NOT_VERIFIED, RIL_PINSTATE_UNKNOWN },
         // ISIM_PUK = 16
         { RIL_APPTYPE_ISIM, RIL_APPSTATE_PUK, RIL_PERSOSUBSTATE_UNKNOWN,
-          NULL, NULL, 0, RIL_PINSTATE_ENABLED_BLOCKED, RIL_PINSTATE_UNKNOWN },
+            NULL, NULL, 0, RIL_PINSTATE_ENABLED_BLOCKED, RIL_PINSTATE_UNKNOWN },
         // ISIM_NETWORK_PERSONALIZATION = 17
         { RIL_APPTYPE_ISIM, RIL_APPSTATE_SUBSCRIPTION_PERSO, RIL_PERSOSUBSTATE_SIM_NETWORK,
-          NULL, NULL, 0, RIL_PINSTATE_ENABLED_NOT_VERIFIED, RIL_PINSTATE_UNKNOWN },
+            NULL, NULL, 0, RIL_PINSTATE_ENABLED_NOT_VERIFIED, RIL_PINSTATE_UNKNOWN },
     };
 
     RIL_CardState card_state;
@@ -624,7 +637,7 @@ static int getCardStatus(RIL_CardStatus_v1_5 **pp_card_status)
     }
 
     // Allocate and initialize base card status.
-    RIL_CardStatus_v1_5 *p_card_status = calloc(1, sizeof(RIL_CardStatus_v1_5));
+    RIL_CardStatus_v1_5* p_card_status = calloc(1, sizeof(RIL_CardStatus_v1_5));
     p_card_status->base.base.base.card_state = card_state;
     p_card_status->base.base.base.universal_pin_state = RIL_PINSTATE_UNKNOWN;
     p_card_status->base.base.base.gsm_umts_subscription_app_index = -1;
@@ -636,17 +649,17 @@ static int getCardStatus(RIL_CardStatus_v1_5 **pp_card_status)
     p_card_status->base.base.iccid = NULL;
     p_card_status->base.eid = "";
     if (sim_status != SIM_ABSENT) {
-        p_card_status->base.base.iccid = (char *)calloc(64, sizeof(char));
+        p_card_status->base.base.iccid = (char*)calloc(64, sizeof(char));
         getIccId(p_card_status->base.base.iccid, 64);
     }
 
     // Initialize application status
     int i;
-    for (i = 0; i < RIL_CARD_MAX_APPS; i ++) {
+    for (i = 0; i < RIL_CARD_MAX_APPS; i++) {
         p_card_status->base.base.base.applications[i] = app_status_array[SIM_ABSENT];
     }
 
-    RLOGD("enter getCardStatus module, num_apps= %d",num_apps);
+    RLOGD("enter getCardStatus module, num_apps= %d", num_apps);
     // Pickup the appropriate application status
     // that reflects sim_status for gsm.
     if (num_apps != 0) {
@@ -665,21 +678,21 @@ static int getCardStatus(RIL_CardStatus_v1_5 **pp_card_status)
     return RIL_E_SUCCESS;
 }
 
-static void requestStksendTerminalResponse(void *data, size_t datalen, RIL_Token t)
+static void requestStksendTerminalResponse(void* data, size_t datalen, RIL_Token t)
 {
     (void)datalen;
 
     int err = -1;
-    char cmd[128] = {0};
-    ATResponse *p_response = NULL;
+    char cmd[128] = { 0 };
+    ATResponse* p_response = NULL;
 
-    if (data == NULL || strlen((char *)data) == 0) {
+    if (data == NULL || strlen((char*)data) == 0) {
         RLOGE("STK sendTerminalResponse data is invalid");
         RIL_onRequestComplete(t, RIL_E_INVALID_ARGUMENTS, NULL, 0);
         return;
     }
 
-    snprintf(cmd, sizeof(cmd), "AT+CUSATT=\"%s\"", (char *)data);
+    snprintf(cmd, sizeof(cmd), "AT+CUSATT=\"%s\"", (char*)data);
     err = at_send_command_singleline(cmd, "+CUSATT:", &p_response);
     if (err < 0 || p_response->success == 0) {
         RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
@@ -690,21 +703,21 @@ static void requestStksendTerminalResponse(void *data, size_t datalen, RIL_Token
     at_response_free(p_response);
 }
 
-static void requestStkSendEnvelope(void *data, size_t datalen, RIL_Token t)
+static void requestStkSendEnvelope(void* data, size_t datalen, RIL_Token t)
 {
     (void)datalen;
 
     int err = -1;
-    char cmd[128] = {0};
-    ATResponse *p_response = NULL;
+    char cmd[128] = { 0 };
+    ATResponse* p_response = NULL;
 
-    if (data == NULL || strlen((char *)data) == 0) {
+    if (data == NULL || strlen((char*)data) == 0) {
         RLOGE("STK sendEnvelope data is invalid");
         RIL_onRequestComplete(t, RIL_E_INVALID_ARGUMENTS, NULL, 0);
         return;
     }
 
-    snprintf(cmd, sizeof(cmd), "AT+CUSATE=\"%s\"", (char *)data);
+    snprintf(cmd, sizeof(cmd), "AT+CUSATE=\"%s\"", (char*)data);
     err = at_send_command_singleline(cmd, "+CUSATE:", &p_response);
     if (err < 0 || p_response->success == 0) {
         RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
@@ -712,11 +725,11 @@ static void requestStkSendEnvelope(void *data, size_t datalen, RIL_Token t)
         RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
 
         // type of alpha data is 85, such as 850C546F6F6C6B6974204D656E75
-        char *p = strstr(p_response->p_intermediates->line, "85");
+        char* p = strstr(p_response->p_intermediates->line, "85");
         if (p != NULL) {
-            char alphaStrHexLen[3] = {0};
-            char alphaStr[1024] = {0};
-            uint8_t *alphaBytes = NULL;
+            char alphaStrHexLen[3] = { 0 };
+            char alphaStr[1024] = { 0 };
+            uint8_t* alphaBytes = NULL;
             int len = 0;
 
             p = p + strlen("85");
@@ -725,7 +738,7 @@ static void requestStkSendEnvelope(void *data, size_t datalen, RIL_Token t)
             strncpy(alphaStr, p + 2, len * 2);
             alphaBytes = convertHexStringToBytes(alphaStr, strlen(alphaStr));
             RIL_onUnsolicitedResponse(RIL_UNSOL_STK_CC_ALPHA_NOTIFY, alphaBytes,
-                strlen((char *)alphaBytes));
+                strlen((char*)alphaBytes));
             free(alphaBytes);
         }
     }
@@ -733,22 +746,22 @@ static void requestStkSendEnvelope(void *data, size_t datalen, RIL_Token t)
     at_response_free(p_response);
 }
 
-static void requestStkServiceIsRunning(void *data, size_t datalen, RIL_Token t)
+static void requestStkServiceIsRunning(void* data, size_t datalen, RIL_Token t)
 {
     (void)data;
     (void)datalen;
 
     int err = -1;
-    ATResponse *p_response = NULL;
+    ATResponse* p_response = NULL;
 
     s_stkServiceRunning = true;
     if (NULL != s_stkUnsolResponse) {
-       RIL_onUnsolicitedResponse(RIL_UNSOL_STK_PROACTIVE_COMMAND,
+        RIL_onUnsolicitedResponse(RIL_UNSOL_STK_PROACTIVE_COMMAND,
             s_stkUnsolResponse, strlen(s_stkUnsolResponse) + 1);
-       free(s_stkUnsolResponse);
-       s_stkUnsolResponse = NULL;
-       RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
-       return;
+        free(s_stkUnsolResponse);
+        s_stkUnsolResponse = NULL;
+        RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
+        return;
     }
 
     err = at_send_command_singleline("AT+CUSATD?", "+CUSATD:", &p_response);
@@ -766,10 +779,10 @@ static int getSimlockRemainTimes(const char* type)
 {
     int err = -1;
     int remain_times = -1;
-    char cmd[32] = {0};
-    char *line = NULL;
-    char *lock_type = NULL;
-    ATResponse *p_response = NULL;
+    char cmd[32] = { 0 };
+    char* line = NULL;
+    char* lock_type = NULL;
+    ATResponse* p_response = NULL;
 
     snprintf(cmd, sizeof(cmd), "AT+CPINR=\"%s\"", type);
     err = at_send_command_multiline(cmd, "+CPINR:", &p_response);
@@ -779,38 +792,41 @@ static int getSimlockRemainTimes(const char* type)
 
     line = p_response->p_intermediates->line;
     err = at_tok_start(&line);
-    if (err < 0) goto error;
+    if (err < 0)
+        goto error;
 
     err = at_tok_nextstr(&line, &lock_type);
-    if (err < 0) goto error;
+    if (err < 0)
+        goto error;
 
     err = at_tok_nextint(&line, &remain_times);
-    if (err < 0) goto error;
+    if (err < 0)
+        goto error;
 
 error:
     at_response_free(p_response);
     return remain_times;
 }
 
-static void requestFacilityLock(int request, char **data,
+static void requestFacilityLock(int request, char** data,
     size_t datalen, RIL_Token t)
 {
     int err = -1;
     int status = 0;
     int serviceClass = 0;
     int remainTimes = 10;
-    char cmd[128] = {0};
-    char *line = NULL;
-    ATResponse *p_response = NULL;
+    char cmd[128] = { 0 };
+    char* line = NULL;
+    ATResponse* p_response = NULL;
     RIL_Errno errnoType = RIL_E_GENERIC_FAILURE;
 
-    if (datalen != 5 * sizeof(char *)) {
+    if (datalen != 5 * sizeof(char*)) {
         goto error;
     }
-    if (data[0] == NULL || data[1] == NULL ||
-       (data[2] == NULL && request == RIL_REQUEST_SET_FACILITY_LOCK) ||
-        strlen(data[0]) == 0 || strlen(data[1]) == 0 ||
-       (request == RIL_REQUEST_SET_FACILITY_LOCK && strlen(data[2]) == 0 )) {
+    if (data[0] == NULL || data[1] == NULL
+        || (data[2] == NULL && request == RIL_REQUEST_SET_FACILITY_LOCK)
+        || strlen(data[0]) == 0 || strlen(data[1]) == 0
+        || (request == RIL_REQUEST_SET_FACILITY_LOCK && strlen(data[2]) == 0)) {
         errnoType = RIL_E_INVALID_ARGUMENTS;
         RLOGE("FacilityLock invalid arguments");
         goto error;
@@ -825,7 +841,7 @@ static void requestFacilityLock(int request, char **data,
             *data[1], data[2], data[3]);
     }
 
-    if (*data[1] == '2') {          // query status
+    if (*data[1] == '2') { // query status
         err = at_send_command_multiline(cmd, "+CLCK: ", &p_response);
         if (err < 0 || p_response->success == 0) {
             goto error;
@@ -833,15 +849,17 @@ static void requestFacilityLock(int request, char **data,
         line = p_response->p_intermediates->line;
 
         err = at_tok_start(&line);
-        if (err < 0) goto error;
+        if (err < 0)
+            goto error;
 
         err = at_tok_nextint(&line, &status);
-        if (err < 0) goto error;
+        if (err < 0)
+            goto error;
 
         RIL_onRequestComplete(t, RIL_E_SUCCESS, &status, sizeof(int));
         at_response_free(p_response);
         return;
-    } else {            // unlock/lock this facility
+    } else { // unlock/lock this facility
         err = at_send_command(cmd, &p_response);
         if (err < 0 || p_response->success == 0) {
             errnoType = RIL_E_PASSWORD_INCORRECT;
@@ -864,15 +882,15 @@ error:
     at_response_free(p_response);
 }
 
-static void requestSetSuppServiceNotifications(void *data, size_t datalen,
+static void requestSetSuppServiceNotifications(void* data, size_t datalen,
     RIL_Token t)
 {
     (void)datalen;
 
     int err = 0;
-    ATResponse *p_response = NULL;
-    int mode = ((int *)data)[0];
-    char cmd[32] = {0};
+    ATResponse* p_response = NULL;
+    int mode = ((int*)data)[0];
+    char cmd[32] = { 0 };
 
     snprintf(cmd, sizeof(cmd), "AT+CSSN=%d,%d", mode, mode);
     err = at_send_command(cmd, &p_response);
@@ -885,14 +903,14 @@ static void requestSetSuppServiceNotifications(void *data, size_t datalen,
     at_response_free(p_response);
 }
 
-static void requestSendUSSD(void *data, size_t datalen, RIL_Token t)
+static void requestSendUSSD(void* data, size_t datalen, RIL_Token t)
 {
     (void)datalen;
 
     int err = -1;
-    char cmd[128] = {0};
-    const char *ussdRequest = (char *)(data);
-    ATResponse *p_response = NULL;
+    char cmd[128] = { 0 };
+    const char* ussdRequest = (char*)(data);
+    ATResponse* p_response = NULL;
 
     snprintf(cmd, sizeof(cmd), "AT+CUSD=1,\"%s\"", ussdRequest);
     err = at_send_command(cmd, &p_response);
@@ -905,15 +923,15 @@ static void requestSendUSSD(void *data, size_t datalen, RIL_Token t)
     at_response_free(p_response);
 }
 
-static void requestChangeSimPin2(void *data, size_t datalen, RIL_Token t)
+static void requestChangeSimPin2(void* data, size_t datalen, RIL_Token t)
 {
     int err;
     int remaintime = -1;
-    char cmd[64] = {0};
-    const char **strings = (const char **)data;
-    ATResponse *p_response = NULL;
+    char cmd[64] = { 0 };
+    const char** strings = (const char**)data;
+    ATResponse* p_response = NULL;
 
-    if (datalen != 3 * sizeof(char *)) {
+    if (datalen != 3 * sizeof(char*)) {
         goto error;
     }
 
@@ -935,15 +953,16 @@ error:
     at_response_free(p_response);
 }
 
-static void  requestChangeSimPin(int request, void*  data, size_t  datalen, RIL_Token  t)
+static void requestChangeSimPin(int request, void* data, size_t datalen, RIL_Token t)
 {
-    ATResponse *p_response = NULL;
+    ATResponse* p_response = NULL;
     int err;
     int remaintimes = -1;
-    char *cmd = NULL;
-    const char **strings = (const char **)data;;
+    char* cmd = NULL;
+    const char** strings = (const char**)data;
+    ;
 
-    if (datalen == 2 * sizeof(char *) || datalen == 3 * sizeof(char *)) {
+    if (datalen == 2 * sizeof(char*) || datalen == 3 * sizeof(char*)) {
         asprintf(&cmd, "AT+CPIN=%s,%s", strings[0], strings[1]);
     } else
         goto error;
@@ -952,13 +971,13 @@ static void  requestChangeSimPin(int request, void*  data, size_t  datalen, RIL_
     free(cmd);
 
     if (err < 0 || p_response->success == 0) {
-error:
+    error:
         if (request == RIL_REQUEST_CHANGE_SIM_PIN) {
             remaintimes = getSimlockRemainTimes("SIM PIN");
         } else if (request == RIL_REQUEST_ENTER_SIM_PUK) {
             remaintimes = getSimlockRemainTimes("SIM PUK");
         } else if (request == RIL_REQUEST_ENTER_SIM_PUK2) {
-          remaintimes = getSimlockRemainTimes("SIM PUK2");
+            remaintimes = getSimlockRemainTimes("SIM PUK2");
         }
 
         RIL_onRequestComplete(t, RIL_E_PASSWORD_INCORRECT, &remaintimes,
@@ -970,15 +989,16 @@ error:
     at_response_free(p_response);
 }
 
-static void requestEnterSimPin(int request, void *data, size_t datalen, RIL_Token t)
+static void requestEnterSimPin(int request, void* data, size_t datalen, RIL_Token t)
 {
-    ATResponse *p_response = NULL;
+    ATResponse* p_response = NULL;
     int err;
     int remaintimes = -1;
-    char *cmd = NULL;
-    const char **strings = (const char **)data;;
+    char* cmd = NULL;
+    const char** strings = (const char**)data;
+    ;
 
-    if (datalen == sizeof(char *) || datalen == 2 * sizeof(char *)) {
+    if (datalen == sizeof(char*) || datalen == 2 * sizeof(char*)) {
         asprintf(&cmd, "AT+CPIN=%s", strings[0]);
     } else
         goto error;
@@ -987,7 +1007,7 @@ static void requestEnterSimPin(int request, void *data, size_t datalen, RIL_Toke
     free(cmd);
 
     if (err < 0 || p_response->success == 0) {
-error:
+    error:
         if (request == RIL_REQUEST_ENTER_SIM_PIN) {
             remaintimes = getSimlockRemainTimes("SIM PIN");
         } else if (request == RIL_REQUEST_ENTER_SIM_PIN2) {
@@ -1003,20 +1023,20 @@ error:
     at_response_free(p_response);
 }
 
-static void requestSIM_IO(void *data, size_t datalen, RIL_Token t)
+static void requestSIM_IO(void* data, size_t datalen, RIL_Token t)
 {
     (void)datalen;
 
-    ATResponse *p_response = NULL;
+    ATResponse* p_response = NULL;
     RIL_SIM_IO_Response sr;
     int err;
-    char *cmd = NULL;
-    RIL_SIM_IO_v6 *p_args;
-    char *line;
+    char* cmd = NULL;
+    RIL_SIM_IO_v6* p_args;
+    char* line;
 
     memset(&sr, 0, sizeof(sr));
 
-    p_args = (RIL_SIM_IO_v6 *)data;
+    p_args = (RIL_SIM_IO_v6*)data;
 
     /* FIXME handle pin2 */
 
@@ -1041,9 +1061,9 @@ static void requestSIM_IO(void *data, size_t datalen, RIL_Token t)
         goto error;
     }
 
-    if (sr.simResponse != NULL &&       // Default to be USIM card
-        p_args->command == 192) {       // Get response
-        uint8_t *bytes = convertHexStringToBytes(sr.simResponse, strlen(sr.simResponse));
+    if (sr.simResponse != NULL && // Default to be USIM card
+        p_args->command == 192) { // Get response
+        uint8_t* bytes = convertHexStringToBytes(sr.simResponse, strlen(sr.simResponse));
         if (bytes == NULL) {
             goto error;
         }
@@ -1067,15 +1087,15 @@ error:
     free(cmd);
 }
 
-static void requestGetSimStatus(void *data, size_t datalen, RIL_Token t)
+static void requestGetSimStatus(void* data, size_t datalen, RIL_Token t)
 {
-    RIL_CardStatus_v1_5 *p_card_status;
-    char *p_buffer;
+    RIL_CardStatus_v1_5* p_card_status;
+    char* p_buffer;
     int buffer_size;
 
     int result = getCardStatus(&p_card_status);
     if (result == RIL_E_SUCCESS) {
-        p_buffer = (char *)p_card_status;
+        p_buffer = (char*)p_card_status;
         buffer_size = sizeof(*p_card_status);
     } else {
         p_buffer = NULL;
@@ -1086,48 +1106,48 @@ static void requestGetSimStatus(void *data, size_t datalen, RIL_Token t)
     freeCardStatus(p_card_status);
 }
 
-static void requestGetIMSI(void *data, size_t datalen, RIL_Token t)
+static void requestGetIMSI(void* data, size_t datalen, RIL_Token t)
 {
-    ATResponse *p_response = NULL;
+    ATResponse* p_response = NULL;
     int err = at_send_command_numeric("AT+CIMI", &p_response);
 
     if (err < 0 || p_response->success == 0) {
         RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
     } else {
         RIL_onRequestComplete(t, RIL_E_SUCCESS,
-            p_response->p_intermediates->line, sizeof(char *));
+            p_response->p_intermediates->line, sizeof(char*));
     }
 
     at_response_free(p_response);
 }
 
-static void requestCancelUSSD(void *data, size_t datalen, RIL_Token t)
+static void requestCancelUSSD(void* data, size_t datalen, RIL_Token t)
 {
-    ATResponse *p_response = NULL;
+    ATResponse* p_response = NULL;
     int err = at_send_command_numeric("AT+CUSD=2", &p_response);
 
     if (err < 0 || p_response->success == 0) {
         RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
     } else {
         RIL_onRequestComplete(t, RIL_E_SUCCESS,
-            p_response->p_intermediates->line, sizeof(char *));
+            p_response->p_intermediates->line, sizeof(char*));
     }
 
     at_response_free(p_response);
 }
 
-static void requestEnableUICCApplication(void *data, size_t datalen, RIL_Token t)
+static void requestEnableUICCApplication(void* data, size_t datalen, RIL_Token t)
 {
     if (data == NULL || datalen != sizeof(int)) {
         RIL_onRequestComplete(t, RIL_E_INTERNAL_ERR, NULL, 0);
         return;
     }
 
-    areUiccApplicationsEnabled = *(int *)(data);
+    areUiccApplicationsEnabled = *(int*)(data);
     RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
 }
 
-static void requestQueryUICCApplication(void *data, size_t datalen, RIL_Token t)
+static void requestQueryUICCApplication(void* data, size_t datalen, RIL_Token t)
 {
     (void)data;
     (void)datalen;
@@ -1135,12 +1155,12 @@ static void requestQueryUICCApplication(void *data, size_t datalen, RIL_Token t)
         sizeof(areUiccApplicationsEnabled));
 }
 
-static int parseProactiveCmdInd(char *response)
+static int parseProactiveCmdInd(char* response)
 {
     int typePos = 0;
     int cmdType = 0;
-    char tempStr[3] = {0};
-    char *end = NULL;
+    char tempStr[3] = { 0 };
+    char* end = NULL;
     StkUnsolEvent ret = STK_UNSOL_EVENT_UNKNOWN;
 
     if (response == NULL || strlen(response) < 3) {
@@ -1148,9 +1168,9 @@ static int parseProactiveCmdInd(char *response)
     }
 
     if (response[2] <= '7') {
-       typePos = 10;
+        typePos = 10;
     } else {
-       typePos = 12;
+        typePos = 12;
     }
 
     if ((int)strlen(response) < typePos + 1) {
@@ -1160,30 +1180,30 @@ static int parseProactiveCmdInd(char *response)
     memcpy(tempStr, &(response[typePos]), 2);
     cmdType = strtoul(tempStr, &end, 16);
     cmdType = 0xFF & cmdType;
-    RLOGD("cmdType: %d",cmdType);
+    RLOGD("cmdType: %d", cmdType);
 
     switch (cmdType) {
-       case STK_RUN_AT:
-       case STK_SEND_DTMF:
-       case STK_SEND_SMS:
-       case STK_SEND_SS:
-       case STK_SEND_USSD:
-       case STK_PLAY_TONE:
-       case STK_CLOSE_CHANNEL:
-           ret = STK_UNSOL_EVENT_NOTIFY;
-           break;
-       case STK_REFRESH:
-            if (strncasecmp(&(response[typePos + 2]), "04", 2) == 0) {  // SIM_RESET
-                RLOGD("Type of Refresh is SIM_RESET");
-                s_stkServiceRunning = false;
-                ret = STK_UNSOL_PROACTIVE_CMD;
-            } else {
-                ret = STK_UNSOL_EVENT_NOTIFY;
-            }
-            break;
-       default:
+    case STK_RUN_AT:
+    case STK_SEND_DTMF:
+    case STK_SEND_SMS:
+    case STK_SEND_SS:
+    case STK_SEND_USSD:
+    case STK_PLAY_TONE:
+    case STK_CLOSE_CHANNEL:
+        ret = STK_UNSOL_EVENT_NOTIFY;
+        break;
+    case STK_REFRESH:
+        if (strncasecmp(&(response[typePos + 2]), "04", 2) == 0) { // SIM_RESET
+            RLOGD("Type of Refresh is SIM_RESET");
+            s_stkServiceRunning = false;
             ret = STK_UNSOL_PROACTIVE_CMD;
-            break;
+        } else {
+            ret = STK_UNSOL_EVENT_NOTIFY;
+        }
+        break;
+    default:
+        ret = STK_UNSOL_PROACTIVE_CMD;
+        break;
     }
 
     if (getSIMStatus() == SIM_ABSENT && s_stkServiceRunning) {
@@ -1192,7 +1212,7 @@ static int parseProactiveCmdInd(char *response)
 
     if (false == s_stkServiceRunning) {
         ret = STK_UNSOL_EVENT_UNKNOWN;
-        s_stkUnsolResponse = (char *)calloc((strlen(response) + 1), sizeof(char));
+        s_stkUnsolResponse = (char*)calloc((strlen(response) + 1), sizeof(char));
         snprintf(s_stkUnsolResponse, strlen(response) + 1, "%s", response);
         RLOGD("STK service is not running [%s]", s_stkUnsolResponse);
     }
@@ -1215,7 +1235,7 @@ int getMncLength(void)
     return s_mncLength;
 }
 
-void on_request_sim(int request, void *data, size_t datalen, RIL_Token t)
+void on_request_sim(int request, void* data, size_t datalen, RIL_Token t)
 {
     switch (request) {
     case RIL_REQUEST_GET_SIM_STATUS:
@@ -1249,12 +1269,12 @@ void on_request_sim(int request, void *data, size_t datalen, RIL_Token t)
         requestCancelUSSD(data, datalen, t);
         break;
     case RIL_REQUEST_QUERY_FACILITY_LOCK:
-        char *lockData[4];
-        lockData[0] = ((char **)data)[0];
+        char* lockData[4];
+        lockData[0] = ((char**)data)[0];
         lockData[1] = "2";
-        lockData[2] = ((char **)data)[1];
-        lockData[3] = ((char **)data)[2];
-        requestFacilityLock(request, lockData, datalen + sizeof(char *), t);
+        lockData[2] = ((char**)data)[1];
+        lockData[3] = ((char**)data)[2];
+        requestFacilityLock(request, lockData, datalen + sizeof(char*), t);
         break;
     case RIL_REQUEST_SET_FACILITY_LOCK:
         requestFacilityLock(request, data, datalen, t);
@@ -1298,7 +1318,7 @@ void on_request_sim(int request, void *data, size_t datalen, RIL_Token t)
     RLOGD("On request sim end\n");
 }
 
-bool try_handle_unsol_sim(const char *s)
+bool try_handle_unsol_sim(const char* s)
 {
     bool ret = false;
     char *line = NULL, *p;
@@ -1328,7 +1348,7 @@ bool try_handle_unsol_sim(const char *s)
         free(line);
 
         ret = true;
-    } else if (strStartsWith(s, "+CUSATEND")) {         // session end
+    } else if (strStartsWith(s, "+CUSATEND")) { // session end
         RIL_onUnsolicitedResponse(RIL_UNSOL_STK_SESSION_END, NULL, 0);
         ret = true;
     } else if (strStartsWith(s, "+CUSATP:")) {
@@ -1344,7 +1364,7 @@ bool try_handle_unsol_sim(const char *s)
             return true;
         }
 
-        char *response = NULL;
+        char* response = NULL;
         if (at_tok_nextstr(&p, &response) < 0) {
             RLOGE("%s fail", s);
             free(line);

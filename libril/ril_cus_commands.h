@@ -14,6 +14,6 @@
 ** See the License for the specific language governing permissions and
 ** limitations under the License.
 */
-    {0, NULL, NULL},                   // none
-    // 2000
-    {RIL_REQUEST_SET_EMERGENCY_NUMBER, NULL, NULL}
+{ 0, NULL, NULL }, // none
+                   // 2000
+    { RIL_REQUEST_SET_EMERGENCY_NUMBER, NULL, NULL },

@@ -17,15 +17,15 @@
 #define LOG_TAG "LOCAL_SOCKET"
 #define NDEBUG 1
 
-#include <sys/socket.h>
-#include <sys/un.h>
-#include <errno.h>
-#include <sys/types.h>
-#include <fcntl.h>
 #include <assert.h>
-#include <stdlib.h>
+#include <errno.h>
+#include <fcntl.h>
 #include <limits.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <sys/socket.h>
+#include <sys/types.h>
+#include <sys/un.h>
 
 #include <local_socket.h>
 #include <telephony/ril.h>
@@ -33,15 +33,16 @@
 
 #define UTF8_SEQ_LENGTH(ch) (((0xe5000000 >> ((ch >> 3) & 0x1e)) & 3) + 1)
 
-#define UTF8_SHIFT_AND_MASK(unicode, byte)  \
-            (unicode)<<=6; (unicode) |= (0x3f & (byte));
+#define UTF8_SHIFT_AND_MASK(unicode, byte) \
+    (unicode) <<= 6;                       \
+    (unicode) |= (0x3f & (byte));
 
 #define UNICODE_UPPER_LIMIT 0x10fffd
 
-int local_get_control_socket(const char *name)
+int local_get_control_socket(const char* name)
 {
     char key[64] = LOCAL_SOCKET_ENV_PREFIX;
-    const char *val = NULL;
+    const char* val = NULL;
     int fd = 0;
 
     strlcpy(key + sizeof(LOCAL_SOCKET_ENV_PREFIX) - 1, name,
@@ -55,7 +56,7 @@ int local_get_control_socket(const char *name)
     }
 
     errno = 0;
-    fd = strtol(val,NULL,10);
+    fd = strtol(val, NULL, 10);
     if (errno) {
         return -1;
     }
@@ -63,7 +64,7 @@ int local_get_control_socket(const char *name)
     return fd;
 }
 
-int ril_socket_create(const char *name, int type)
+int ril_socket_create(const char* name, int type)
 {
     struct sockaddr_un addr;
     int fd, ret;
@@ -74,16 +75,16 @@ int ril_socket_create(const char *name, int type)
         return -1;
     }
 
-    memset(&addr, 0 , sizeof(addr));
+    memset(&addr, 0, sizeof(addr));
     addr.sun_family = AF_UNIX;
-    snprintf(addr.sun_path, sizeof(addr.sun_path), LOCAL_SOCKET_DIR"/%s",name);
+    snprintf(addr.sun_path, sizeof(addr.sun_path), LOCAL_SOCKET_DIR "/%s", name);
     ret = unlink(addr.sun_path);
     if (ret != 0 && errno != ENOENT) {
         RLOGE("Failed to unlink old socket '%s': %s\n", name, strerror(errno));
         goto out_close;
     }
 
-    ret = bind(fd, (struct sockaddr *) &addr, sizeof (addr));
+    ret = bind(fd, (struct sockaddr*)&addr, sizeof(addr));
     if (ret) {
         RLOGE("Failed to bind socket '%s': %s\n", name, strerror(errno));
         goto out_unlink;

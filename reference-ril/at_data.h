@@ -20,8 +20,8 @@
 #include <stdbool.h>
 #include <telephony/ril.h>
 
-void onDataCallListChanged(void *param);
-void on_request_data(int request, void *data, size_t datalen, RIL_Token t);
-bool try_handle_unsol_data(const char *s);
+void onDataCallListChanged(void* param);
+void on_request_data(int request, void* data, size_t datalen, RIL_Token t);
+bool try_handle_unsol_data(const char* s);
 
 #endif

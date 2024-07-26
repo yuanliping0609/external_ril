@@ -20,10 +20,10 @@
 #include <stdbool.h>
 #include <telephony/ril.h>
 
-void on_request_network(int request, void *data, size_t datalen, RIL_Token t);
-int parseRegistrationState(char *str, int *type, int *items, int **response);
+void on_request_network(int request, void* data, size_t datalen, RIL_Token t);
+int parseRegistrationState(char* str, int* type, int* items, int** response);
 int is3gpp2(int radioTech);
-bool try_handle_unsol_net(const char *s);
+bool try_handle_unsol_net(const char* s);
 int mapNetworkRegistrationResponse(int in_response);
 
 #endif

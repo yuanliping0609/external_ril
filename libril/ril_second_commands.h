@@ -14,14 +14,15 @@
 ** See the License for the specific language governing permissions and
 ** limitations under the License.
 */
-    {0, NULL, NULL},                   // none
+// none
+{ 0, NULL, NULL },
     // 200
-    {201, NULL, NULL},
-    {202, NULL, NULL},
-    {203, NULL, NULL},
-    {204, NULL, NULL},
-    {RIL_REQUEST_EMERGENCY_DIAL, dispatchDial, responseVoid},
-    {206, NULL, NULL},
-    {207, NULL, NULL},
-    {RIL_REQUEST_ENABLE_UICC_APPLICATIONS, dispatchInts, responseVoid},
-    {RIL_REQUEST_GET_UICC_APPLICATIONS_ENABLEMENT, dispatchVoid, responseInts},
+    { 201, NULL, NULL },
+    { 202, NULL, NULL },
+    { 203, NULL, NULL },
+    { 204, NULL, NULL },
+    { RIL_REQUEST_EMERGENCY_DIAL, dispatchDial, responseVoid },
+    { 206, NULL, NULL },
+    { 207, NULL, NULL },
+    { RIL_REQUEST_ENABLE_UICC_APPLICATIONS, dispatchInts, responseVoid },
+    { RIL_REQUEST_GET_UICC_APPLICATIONS_ENABLEMENT, dispatchVoid, responseInts },

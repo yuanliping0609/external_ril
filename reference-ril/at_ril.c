@@ -22,11 +22,10 @@
 #include <fcntl.h>
 #include <pthread.h>
 #include <stdio.h>
-#include <telephony/ril.h>
+
 #include <log/log_radio.h>
-#include "atchannel.h"
-#include "at_tok.h"
-#include "misc.h"
+#include <telephony/ril.h>
+
 #include "at_call.h"
 #include "at_data.h"
 #include "at_modem.h"
@@ -34,12 +33,15 @@
 #include "at_ril.h"
 #include "at_sim.h"
 #include "at_sms.h"
+#include "at_tok.h"
+#include "atchannel.h"
+#include "misc.h"
 
-static void onRequest(int request, void *data, size_t datalen, RIL_Token t);
+static void onRequest(int request, void* data, size_t datalen, RIL_Token t);
 static RIL_RadioState currentState(void);
 static int onSupports(int requestCode);
 static void onCancel(RIL_Token t);
-static const char *getVersion(void);
+static const char* getVersion(void);
 
 static pthread_mutex_t s_state_mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t s_state_cond = PTHREAD_COND_INITIALIZER;
@@ -67,8 +69,8 @@ typedef enum req_category {
     REQ_NOT_SUPPORTED,
 } req_category_t;
 
-static const struct timeval TIMEVAL_0 = {0, 0};
-static const struct RIL_Env *s_rilenv;
+static const struct timeval TIMEVAL_0 = { 0, 0 };
+static const struct RIL_Env* s_rilenv;
 
 /* trigger change to this with s_state_cond */
 static int s_closed = 0;
@@ -230,18 +232,18 @@ static inline req_category_t request2eventtype(int request)
     return type;
 }
 
-static const char *getVersion(void)
+static const char* getVersion(void)
 {
     return "android reference-ril 1.0";
 }
 
-static int query_supported_techs(ModemInfo *mdm, int *supported)
+static int query_supported_techs(ModemInfo* mdm, int* supported)
 {
     (void)mdm;
 
-    ATResponse *p_response;
+    ATResponse* p_response;
     int err, val, techs = 0;
-    char *line;
+    char* line;
 
     RLOGD("query_supported_techs");
     err = at_send_command_singleline("AT+CTEC=?", "+CTEC:", &p_response);
@@ -267,7 +269,7 @@ error:
     return -1;
 }
 
-static int is_multimode_modem(ModemInfo *mdm)
+static int is_multimode_modem(ModemInfo* mdm)
 {
     int tech;
     int32_t preferred;
@@ -285,12 +287,10 @@ static int is_multimode_modem(ModemInfo *mdm)
     return 0;
 }
 
-/**
- * Find out if our modem is GSM, CDMA or both (Multimode)
- */
-static void probeForModemMode(ModemInfo *info)
+/* Find out if our modem is GSM, CDMA or both (Multimode) */
+static void probeForModemMode(ModemInfo* info)
 {
-    ATResponse *response;
+    ATResponse* response;
     int err;
     assert(info);
     // Currently, our only known multimode modem is qemu's android modem,
@@ -317,7 +317,8 @@ static void probeForModemMode(ModemInfo *info)
         return;
     }
 
-    if (!err) at_response_free(response);
+    if (!err)
+        at_response_free(response);
     // TODO: find out if modem really supports WCDMA/LTE
     info->supportedTechs = MDM_GSM | MDM_WCDMA | MDM_LTE;
     info->currentTech = MDM_GSM;
@@ -335,7 +336,7 @@ static void waitForClose(void)
     pthread_mutex_unlock(&s_state_mutex);
 }
 
-/** do post-AT+CFUN=1 initialization */
+/* do post-AT+CFUN=1 initialization */
 static void onRadioPowerOn(void)
 {
 #ifdef USE_TI_COMMANDS
@@ -356,11 +357,11 @@ static void onRadioPowerOn(void)
  * Initialize everything that can be configured while we're still in
  * AT+CFUN=0
  */
-static void initializeCallback(void *param)
+static void initializeCallback(void* param)
 {
     (void)param;
 
-    ATResponse *p_response = NULL;
+    ATResponse* p_response = NULL;
     int err;
 
     setRadioState(RADIO_STATE_OFF);
@@ -428,7 +429,7 @@ static void initializeCallback(void *param)
     /*  TI specific -- notifications when SMS is ready (currently ignored) */
     at_send_command("AT%CSTAT=1", NULL);
 
-#endif      /* USE_TI_COMMANDS */
+#endif /* USE_TI_COMMANDS */
 
     /* assume radio is off on error */
     if (isRadioOn() > 0) {
@@ -441,15 +442,14 @@ static void initializeCallback(void *param)
  * This is called on atchannel's reader thread. AT commands may
  * not be issued here
  */
-static void onUnsolicited(const char *s, const char *sms_pdu)
+static void onUnsolicited(const char* s, const char* sms_pdu)
 {
     if (isModemEnable() == 0) {
         return;
     }
 
     /* Ignore unsolicited responses until we're initialized.
-     * This is OK because the RIL library will poll for initial state
-     */
+     * This is OK because the RIL library will poll for initial state */
     if (getRadioState() == RADIO_STATE_UNAVAILABLE) {
         return;
     }
@@ -506,7 +506,7 @@ static void onATTimeout(void)
     setRadioState(RADIO_STATE_UNAVAILABLE);
 }
 
-static void *mainLoop(void *param)
+static void* mainLoop(void* param)
 {
     (void)param;
 
@@ -519,7 +519,7 @@ static void *mainLoop(void *param)
 
     for (;;) {
         fd = -1;
-        while  (fd < 0) {
+        while (fd < 0) {
             if (isInEmulator()) {
                 fd = open("/dev/ttyV0", O_RDWR);
                 RLOGD("opening qemu_modem_port %d!", fd);
@@ -553,7 +553,7 @@ static void *mainLoop(void *param)
 
 pthread_t s_tid_mainloop;
 
-const RIL_RadioFunctions *RIL_Init(const struct RIL_Env *env, int argc, char **argv)
+const RIL_RadioFunctions* RIL_Init(const struct RIL_Env* env, int argc, char** argv)
 {
     int ret;
     pthread_attr_t attr;
@@ -568,7 +568,7 @@ const RIL_RadioFunctions *RIL_Init(const struct RIL_Env *env, int argc, char **a
         return NULL;
     }
 
-    pthread_attr_init (&attr);
+    pthread_attr_init(&attr);
     pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
     ret = pthread_create(&s_tid_mainloop, &attr, mainLoop, NULL);
     if (ret < 0) {
@@ -624,7 +624,7 @@ static void onCancel(RIL_Token t)
  * we must ensure that the underlying at_send_command_* function
  * is atomic.
  */
-static void onRequest(int request, void *data, size_t datalen, RIL_Token t)
+static void onRequest(int request, void* data, size_t datalen, RIL_Token t)
 {
     int req_type = 0;
 
@@ -644,90 +644,87 @@ static void onRequest(int request, void *data, size_t datalen, RIL_Token t)
     }
 
     /* Ignore all requests except RIL_REQUEST_GET_SIM_STATUS
-     * when RADIO_STATE_UNAVAILABLE.
-     */
+     * when RADIO_STATE_UNAVAILABLE. */
     if (getRadioState() == RADIO_STATE_UNAVAILABLE
         && request != RIL_REQUEST_GET_SIM_STATUS
         && request != RIL_REQUEST_ENABLE_MODEM
-        && request != RIL_REQUEST_GET_MODEM_STATUS
-    ) {
+        && request != RIL_REQUEST_GET_MODEM_STATUS) {
         RIL_onRequestComplete(t, RIL_E_RADIO_NOT_AVAILABLE, NULL, 0);
         return;
     }
 
     /* Ignore all non-power requests when RADIO_STATE_OFF
-     * (except RIL_REQUEST_GET_SIM_STATUS)
-     */
+     * (except RIL_REQUEST_GET_SIM_STATUS) */
     if (getRadioState() == RADIO_STATE_OFF) {
         switch (request) {
-            case RIL_REQUEST_BASEBAND_VERSION:
-            case RIL_REQUEST_CDMA_GET_SUBSCRIPTION_SOURCE:
-            case RIL_REQUEST_CDMA_QUERY_PREFERRED_VOICE_PRIVACY_MODE:
-            case RIL_REQUEST_CDMA_SET_PREFERRED_VOICE_PRIVACY_MODE:
-            case RIL_REQUEST_CDMA_SET_ROAMING_PREFERENCE:
-            case RIL_REQUEST_CDMA_SET_SUBSCRIPTION_SOURCE:
-            case RIL_REQUEST_CDMA_SUBSCRIPTION:
-            case RIL_REQUEST_DEVICE_IDENTITY:
-            case RIL_REQUEST_EXIT_EMERGENCY_CALLBACK_MODE:
-            case RIL_REQUEST_GET_ACTIVITY_INFO:
-            case RIL_REQUEST_GET_CURRENT_CALLS:
-            case RIL_REQUEST_GET_IMEI:
-            case RIL_REQUEST_GET_IMEISV:
-            case RIL_REQUEST_GET_MUTE:
-            case RIL_REQUEST_SET_MUTE:
-            case RIL_REQUEST_GET_NEIGHBORING_CELL_IDS:
-            case RIL_REQUEST_GET_PREFERRED_NETWORK_TYPE:
-            case RIL_REQUEST_GET_SIM_STATUS:
-            case RIL_REQUEST_QUERY_AVAILABLE_BAND_MODE:
-            case RIL_REQUEST_QUERY_NETWORK_SELECTION_MODE:
-            case RIL_REQUEST_QUERY_TTY_MODE:
-            case RIL_REQUEST_RADIO_POWER:
-            case RIL_REQUEST_SET_BAND_MODE:
-            case RIL_REQUEST_SET_LOCATION_UPDATES:
-            case RIL_REQUEST_SET_PREFERRED_NETWORK_TYPE:
-            case RIL_REQUEST_SET_TTY_MODE:
-            case RIL_REQUEST_SET_UNSOL_CELL_INFO_LIST_RATE:
-            case RIL_REQUEST_VOICE_RADIO_TECH:
-            case RIL_REQUEST_SCREEN_STATE:
-            case RIL_REQUEST_ENABLE_MODEM:
-            case RIL_REQUEST_GET_MODEM_STATUS:
-                // Process all the above, even though the radio is off
-                break;
+        case RIL_REQUEST_BASEBAND_VERSION:
+        case RIL_REQUEST_CDMA_GET_SUBSCRIPTION_SOURCE:
+        case RIL_REQUEST_CDMA_QUERY_PREFERRED_VOICE_PRIVACY_MODE:
+        case RIL_REQUEST_CDMA_SET_PREFERRED_VOICE_PRIVACY_MODE:
+        case RIL_REQUEST_CDMA_SET_ROAMING_PREFERENCE:
+        case RIL_REQUEST_CDMA_SET_SUBSCRIPTION_SOURCE:
+        case RIL_REQUEST_CDMA_SUBSCRIPTION:
+        case RIL_REQUEST_DEVICE_IDENTITY:
+        case RIL_REQUEST_EXIT_EMERGENCY_CALLBACK_MODE:
+        case RIL_REQUEST_GET_ACTIVITY_INFO:
+        case RIL_REQUEST_GET_CURRENT_CALLS:
+        case RIL_REQUEST_GET_IMEI:
+        case RIL_REQUEST_GET_IMEISV:
+        case RIL_REQUEST_GET_MUTE:
+        case RIL_REQUEST_SET_MUTE:
+        case RIL_REQUEST_GET_NEIGHBORING_CELL_IDS:
+        case RIL_REQUEST_GET_PREFERRED_NETWORK_TYPE:
+        case RIL_REQUEST_GET_SIM_STATUS:
+        case RIL_REQUEST_QUERY_AVAILABLE_BAND_MODE:
+        case RIL_REQUEST_QUERY_NETWORK_SELECTION_MODE:
+        case RIL_REQUEST_QUERY_TTY_MODE:
+        case RIL_REQUEST_RADIO_POWER:
+        case RIL_REQUEST_SET_BAND_MODE:
+        case RIL_REQUEST_SET_LOCATION_UPDATES:
+        case RIL_REQUEST_SET_PREFERRED_NETWORK_TYPE:
+        case RIL_REQUEST_SET_TTY_MODE:
+        case RIL_REQUEST_SET_UNSOL_CELL_INFO_LIST_RATE:
+        case RIL_REQUEST_VOICE_RADIO_TECH:
+        case RIL_REQUEST_SCREEN_STATE:
+        case RIL_REQUEST_ENABLE_MODEM:
+        case RIL_REQUEST_GET_MODEM_STATUS:
+            // Process all the above, even though the radio is off
+            break;
 
-            default:
-                // For all others, say NOT_AVAILABLE because the radio is off
-                RIL_onRequestComplete(t, RIL_E_RADIO_NOT_AVAILABLE, NULL, 0);
-                return;
+        default:
+            // For all others, say NOT_AVAILABLE because the radio is off
+            RIL_onRequestComplete(t, RIL_E_RADIO_NOT_AVAILABLE, NULL, 0);
+            return;
         }
     }
 
     switch (req_type) {
-        case REQ_MODEM_TYPE:
-            on_request_modem(request, data, datalen, t);
-            break;
-        case REQ_CALL_TYPE:
-            on_request_call(request, data, datalen, t);
-            break;
-        case REQ_SMS_TYPE:
-            on_request_sms(request, data, datalen, t);
-            break;
-        case REQ_SIM_TYPE:
-            on_request_sim(request, data, datalen, t);
-            break;
-        case REQ_DATA_TYPE:
-            on_request_data(request, data, datalen, t);
-            break;
-        case REQ_NETWORK_TYPE:
-            on_request_network(request, data, datalen, t);
-            break;
-        case REQ_NOT_SUPPORTED:
-            RLOGE("Request not supported");
-            RIL_onRequestComplete(t, RIL_E_REQUEST_NOT_SUPPORTED, NULL, 0);
-            break;
-        default:
-            RLOGE("Unknown Request");
-            RIL_onRequestComplete(t, RIL_E_REQUEST_NOT_SUPPORTED, NULL, 0);
-            break;
+    case REQ_MODEM_TYPE:
+        on_request_modem(request, data, datalen, t);
+        break;
+    case REQ_CALL_TYPE:
+        on_request_call(request, data, datalen, t);
+        break;
+    case REQ_SMS_TYPE:
+        on_request_sms(request, data, datalen, t);
+        break;
+    case REQ_SIM_TYPE:
+        on_request_sim(request, data, datalen, t);
+        break;
+    case REQ_DATA_TYPE:
+        on_request_data(request, data, datalen, t);
+        break;
+    case REQ_NETWORK_TYPE:
+        on_request_network(request, data, datalen, t);
+        break;
+    case REQ_NOT_SUPPORTED:
+        RLOGE("Request not supported");
+        RIL_onRequestComplete(t, RIL_E_REQUEST_NOT_SUPPORTED, NULL, 0);
+        break;
+    default:
+        RLOGE("Unknown Request");
+        RIL_onRequestComplete(t, RIL_E_REQUEST_NOT_SUPPORTED, NULL, 0);
+        break;
     }
 
     RLOGD("On request end\n");
@@ -738,7 +735,7 @@ int isConnectionClosed(void)
     return s_closed;
 }
 
-const struct RIL_Env *getRilEnv(void)
+const struct RIL_Env* getRilEnv(void)
 {
     return s_rilenv;
 }
@@ -762,7 +759,7 @@ void setRadioState(RIL_RadioState newState)
 
     if (sState != newState || isConnectionClosed() > 0) {
         sState = newState;
-        pthread_cond_broadcast (&s_state_cond);
+        pthread_cond_broadcast(&s_state_cond);
     }
 
     pthread_mutex_unlock(&s_state_mutex);
@@ -778,8 +775,7 @@ void setRadioState(RIL_RadioState newState)
         /* FIXME onSimReady() and onRadioPowerOn() cannot be called
          * from the AT reader thread
          * Currently, this doesn't happen, but if that changes then these
-         * will need to be dispatched on the request thread
-         */
+         * will need to be dispatched on the request thread */
         if (sState == RADIO_STATE_ON) {
             onRadioPowerOn();
         }

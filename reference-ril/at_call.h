@@ -20,7 +20,7 @@
 #include <stdbool.h>
 #include <telephony/ril.h>
 
-void on_request_call(int request, void *data, size_t datalen, RIL_Token t);
-bool try_handle_unsol_call(const char *s);
+void on_request_call(int request, void* data, size_t datalen, RIL_Token t);
+bool try_handle_unsol_call(const char* s);
 
 #endif

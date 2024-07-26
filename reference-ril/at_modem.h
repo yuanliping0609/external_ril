@@ -22,7 +22,7 @@
 
 typedef struct {
     int supportedTechs; // Bitmask of supported Modem Technology bits
-    int currentTech;    // Technology the modem is currently using (in the format used by modem)
+    int currentTech; // Technology the modem is currently using (in the format used by modem)
     int isMultimode;
 
     // Preferred mode bitmask. This is actually 4 byte-sized bitmasks with different priority values,
@@ -41,31 +41,31 @@ typedef struct {
 
 // TECH returns the current technology in the format used by the modem.
 // It can be used as an l-value
-#define TECH(mdminfo)                   ((mdminfo)->currentTech)
+#define TECH(mdminfo) ((mdminfo)->currentTech)
 // TECH_BIT returns the bitmask equivalent of the current tech
-#define TECH_BIT(mdminfo)               (1 << ((mdminfo)->currentTech))
-#define IS_MULTIMODE(mdminfo)           ((mdminfo)->isMultimode)
-#define TECH_SUPPORTED(mdminfo, tech)   ((mdminfo)->supportedTechs & (tech))
-#define PREFERRED_NETWORK(mdminfo)      ((mdminfo)->preferredNetworkMode)
+#define TECH_BIT(mdminfo) (1 << ((mdminfo)->currentTech))
+#define IS_MULTIMODE(mdminfo) ((mdminfo)->isMultimode)
+#define TECH_SUPPORTED(mdminfo, tech) ((mdminfo)->supportedTechs & (tech))
+#define PREFERRED_NETWORK(mdminfo) ((mdminfo)->preferredNetworkMode)
 
 /* Modem Technology bits */
-#define MDM_GSM         0x01
-#define MDM_WCDMA       0x02
-#define MDM_CDMA        0x04
-#define MDM_EVDO        0x08
-#define MDM_TDSCDMA     0x10
-#define MDM_LTE         0x20
-#define MDM_NR          0x40
+#define MDM_GSM 0x01
+#define MDM_WCDMA 0x02
+#define MDM_CDMA 0x04
+#define MDM_EVDO 0x08
+#define MDM_TDSCDMA 0x10
+#define MDM_LTE 0x20
+#define MDM_NR 0x40
 
 void initModem(void);
-ModemInfo *getModemInfo(void);
+ModemInfo* getModemInfo(void);
 int isModemEnable(void);
 int isRadioOn(void);
-int query_ctec(ModemInfo *mdm, int *current, int32_t *preferred);
-void setRadioTechnology(ModemInfo *mdm, int newtech);
+int query_ctec(ModemInfo* mdm, int* current, int32_t* preferred);
+void setRadioTechnology(ModemInfo* mdm, int newtech);
 int techFromModemType(int mdmtype);
-int parse_technology_response(const char *response, int *current, int32_t *preferred);
-void on_request_modem(int request, void *data, size_t datalen, RIL_Token t);
-bool try_handle_unsol_modem(const char *s);
+int parse_technology_response(const char* response, int* current, int32_t* preferred);
+void on_request_modem(int request, void* data, size_t datalen, RIL_Token t);
+bool try_handle_unsol_modem(const char* s);
 
 #endif

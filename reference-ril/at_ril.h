@@ -21,11 +21,11 @@
 #include <telephony/ril.h>
 
 int isConnectionClosed(void);
-const struct RIL_Env *getRilEnv(void);
+const struct RIL_Env* getRilEnv(void);
 
-#define RIL_onRequestComplete(t, e, response, responselen) getRilEnv()->OnRequestComplete(t,e, response, responselen)
-#define RIL_onUnsolicitedResponse(a,b,c) getRilEnv()->OnUnsolicitedResponse(a,b,c)
-#define RIL_requestTimedCallback(a,b,c) getRilEnv()->RequestTimedCallback(a,b,c)
+#define RIL_onRequestComplete(t, e, response, responselen) getRilEnv()->OnRequestComplete(t, e, response, responselen)
+#define RIL_onUnsolicitedResponse(a, b, c) getRilEnv()->OnUnsolicitedResponse(a, b, c)
+#define RIL_requestTimedCallback(a, b, c) getRilEnv()->RequestTimedCallback(a, b, c)
 
 void setRadioState(RIL_RadioState newState);
 RIL_RadioState getRadioState(void);

@@ -20,36 +20,38 @@
 #include <stdio.h>
 #include <string.h>
 #include <sys/cdefs.h>
+
 #include <log/log_radio.h>
-#include "atchannel.h"
-#include "at_tok.h"
-#include "misc.h"
+
 #include "at_network.h"
 #include "at_ril.h"
 #include "at_sim.h"
 #include "at_sms.h"
+#include "at_tok.h"
+#include "atchannel.h"
+#include "misc.h"
 
-static int s_ims_cause_retry = 0;               // 1==causes sms over ims to temp fail
-static int s_ims_cause_perm_failure = 0;        // 1==causes sms over ims to permanent fail
-static int s_ims_gsm_retry   = 0;               // 1==causes sms over gsm to temp fail
-static int s_ims_gsm_fail    = 0;               // 1==causes sms over gsm to permanent fail
+static int s_ims_cause_retry = 0; // 1==causes sms over ims to temp fail
+static int s_ims_cause_perm_failure = 0; // 1==causes sms over ims to permanent fail
+static int s_ims_gsm_retry = 0; // 1==causes sms over gsm to temp fail
+static int s_ims_gsm_fail = 0; // 1==causes sms over gsm to permanent fail
 
-static void requestWriteSmsToSim(void *data, size_t datalen, RIL_Token t)
+static void requestWriteSmsToSim(void* data, size_t datalen, RIL_Token t)
 {
     (void)datalen;
 
-    RIL_SMS_WriteArgs *p_args;
-    char *cmd;
+    RIL_SMS_WriteArgs* p_args;
+    char* cmd;
     int length;
     int err;
-    ATResponse *p_response = NULL;
+    ATResponse* p_response = NULL;
 
     if (getSIMStatus() == SIM_ABSENT) {
         RIL_onRequestComplete(t, RIL_E_SIM_ABSENT, NULL, 0);
         return;
     }
 
-    p_args = (RIL_SMS_WriteArgs *)data;
+    p_args = (RIL_SMS_WriteArgs*)data;
     length = strlen(p_args->pdu) / 2;
     asprintf(&cmd, "AT+CMGW=%d,%d", length, p_args->status);
 
@@ -68,9 +70,9 @@ error:
     at_response_free(p_response);
 }
 
-static void requestCdmaSendSMS(void *data, size_t datalen, RIL_Token t)
+static void requestCdmaSendSMS(void* data, size_t datalen, RIL_Token t)
 {
-    int err = 1;        // Set to go to error:
+    int err = 1; // Set to go to error:
     RIL_SMS_Response response;
 
     memset(&response, 0, sizeof(response));
@@ -98,15 +100,15 @@ error:
     RIL_onRequestComplete(t, RIL_E_SMS_SEND_FAIL_RETRY, &response, sizeof(response));
 }
 
-static void requestSendSMS(void *data, size_t datalen, RIL_Token t)
+static void requestSendSMS(void* data, size_t datalen, RIL_Token t)
 {
     int err;
-    const char *smsc;
-    const char *pdu;
+    const char* smsc;
+    const char* pdu;
     int tpLayerLength;
     char *cmd1, *cmd2;
     RIL_SMS_Response response;
-    ATResponse *p_response = NULL;
+    ATResponse* p_response = NULL;
 
     if (getSIMStatus() == SIM_ABSENT) {
         RIL_onRequestComplete(t, RIL_E_SIM_ABSENT, NULL, 0);
@@ -116,17 +118,19 @@ static void requestSendSMS(void *data, size_t datalen, RIL_Token t)
     memset(&response, 0, sizeof(response));
     RLOGD("requestSendSMS datalen =%zu", datalen);
 
-    if (s_ims_gsm_fail != 0) goto error;
-    if (s_ims_gsm_retry != 0) goto error2;
+    if (s_ims_gsm_fail != 0)
+        goto error;
+    if (s_ims_gsm_retry != 0)
+        goto error2;
 
-    smsc = ((const char **)data)[0];
-    pdu = ((const char **)data)[1];
+    smsc = ((const char**)data)[0];
+    pdu = ((const char**)data)[1];
 
     tpLayerLength = strlen(pdu) / 2;
 
     // "NULL for default SMSC"
     if (smsc == NULL) {
-        smsc= "00";
+        smsc = "00";
     }
 
     asprintf(&cmd1, "AT+CMGS=%d", tpLayerLength);
@@ -141,7 +145,7 @@ static void requestSendSMS(void *data, size_t datalen, RIL_Token t)
         goto error;
 
     int messageRef = 1;
-    char *line = p_response->p_intermediates->line;
+    char* line = p_response->p_intermediates->line;
 
     err = at_tok_start(&line);
     if (err < 0)
@@ -172,16 +176,16 @@ error2:
     return;
 }
 
-static void requestImsSendSMS(void *data, size_t datalen, RIL_Token t)
+static void requestImsSendSMS(void* data, size_t datalen, RIL_Token t)
 {
-    RIL_IMS_SMS_Message *p_args;
+    RIL_IMS_SMS_Message* p_args;
     RIL_SMS_Response response;
 
     memset(&response, 0, sizeof(response));
 
     // figure out if this is gsm/cdma format
     // then route it to requestSendSMS vs requestCdmaSendSMS respectively
-    p_args = (RIL_IMS_SMS_Message *)data;
+    p_args = (RIL_IMS_SMS_Message*)data;
 
     if (0 != s_ims_cause_perm_failure)
         goto error;
@@ -210,7 +214,7 @@ error2:
     RIL_onRequestComplete(t, RIL_E_SMS_SEND_FAIL_RETRY, &response, sizeof(response));
 }
 
-static void requestSMSAcknowledge(void *data, size_t datalen, RIL_Token t)
+static void requestSMSAcknowledge(void* data, size_t datalen, RIL_Token t)
 {
     (void)datalen;
 
@@ -222,13 +226,13 @@ static void requestSMSAcknowledge(void *data, size_t datalen, RIL_Token t)
         return;
     }
 
-    ackSuccess = ((int *)data)[0];
+    ackSuccess = ((int*)data)[0];
     if (ackSuccess == 1) {
         err = at_send_command("AT+CNMA=1", NULL);
         if (err < 0) {
             goto error;
         }
-    } else if (ackSuccess == 0)  {
+    } else if (ackSuccess == 0) {
         err = at_send_command("AT+CNMA=2", NULL);
         if (err < 0) {
             goto error;
@@ -245,14 +249,14 @@ error:
     RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
 }
 
-static void requestGetSmsBroadcastConfig(void *data, size_t datalen, RIL_Token t)
+static void requestGetSmsBroadcastConfig(void* data, size_t datalen, RIL_Token t)
 {
     (void)data;
     (void)datalen;
 
-    ATResponse *p_response = NULL;
+    ATResponse* p_response = NULL;
     int err = -1, mode, commas = 0, i = 0;
-    char *line = NULL;
+    char* line = NULL;
     char *serviceIds = NULL, *codeSchemes = NULL, *p = NULL;
     char *serviceId = NULL, *codeScheme = NULL;
 
@@ -278,19 +282,18 @@ static void requestGetSmsBroadcastConfig(void *data, size_t datalen, RIL_Token t
     if (err < 0)
         goto error;
 
-    for (p = serviceIds; *p != '\0'; p ++) {
+    for (p = serviceIds; *p != '\0'; p++) {
         if (*p == ',') {
-            commas ++;
+            commas++;
         }
     }
 
-    RIL_GSM_BroadcastSmsConfigInfo **pGsmBci =
-        (RIL_GSM_BroadcastSmsConfigInfo **)alloca((commas + 1) *
-            sizeof(RIL_GSM_BroadcastSmsConfigInfo *));
-    memset(pGsmBci, 0, (commas + 1) * sizeof(RIL_GSM_BroadcastSmsConfigInfo *));
+    RIL_GSM_BroadcastSmsConfigInfo** pGsmBci = (RIL_GSM_BroadcastSmsConfigInfo**)alloca((commas + 1)
+        * sizeof(RIL_GSM_BroadcastSmsConfigInfo*));
+    memset(pGsmBci, 0, (commas + 1) * sizeof(RIL_GSM_BroadcastSmsConfigInfo*));
 
-    for (i = 0; i < commas + 1; i ++) {
-        pGsmBci[i] = (RIL_GSM_BroadcastSmsConfigInfo *)alloca(
+    for (i = 0; i < commas + 1; i++) {
+        pGsmBci[i] = (RIL_GSM_BroadcastSmsConfigInfo*)alloca(
             sizeof(RIL_GSM_BroadcastSmsConfigInfo));
         memset(pGsmBci[i], 0, sizeof(RIL_GSM_BroadcastSmsConfigInfo));
 
@@ -318,7 +321,7 @@ static void requestGetSmsBroadcastConfig(void *data, size_t datalen, RIL_Token t
     }
 
     RIL_onRequestComplete(t, RIL_E_SUCCESS, pGsmBci,
-        (commas + 1) * sizeof(RIL_GSM_BroadcastSmsConfigInfo *));
+        (commas + 1) * sizeof(RIL_GSM_BroadcastSmsConfigInfo*));
     at_response_free(p_response);
     return;
 
@@ -327,7 +330,7 @@ error:
     RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
 }
 
-static void setGsmBroadcastConfigData(int from, int to, int id, int outStrSize, char *outStr)
+static void setGsmBroadcastConfigData(int from, int to, int id, int outStrSize, char* outStr)
 {
     if (from < 0 || from > 0xffff || to < 0 || to > 0xffff) {
         RLOGE("setGsmBroadcastConfig data is invalid, [%d, %d]", from, to);
@@ -346,24 +349,24 @@ static void setGsmBroadcastConfigData(int from, int to, int id, int outStrSize, 
     }
 }
 
-static void requestSetSmsBroadcastConfig(void *data, size_t datalen,
-    RIL_Token t) {
+static void requestSetSmsBroadcastConfig(void* data, size_t datalen,
+    RIL_Token t)
+{
     int i = 0;
-    int count = datalen / sizeof(RIL_GSM_BroadcastSmsConfigInfo *);
+    int count = datalen / sizeof(RIL_GSM_BroadcastSmsConfigInfo*);
     int size = count * 16;
-    char cmd[256] = {0};
-    char *channel = (char *)alloca(size);
-    char *languageId = (char *)alloca(size);
-    ATResponse *p_response = NULL;
-    RIL_GSM_BroadcastSmsConfigInfo **pGsmBci =
-        (RIL_GSM_BroadcastSmsConfigInfo **)data;
-    RIL_GSM_BroadcastSmsConfigInfo gsmBci = {0};
+    char cmd[256] = { 0 };
+    char* channel = (char*)alloca(size);
+    char* languageId = (char*)alloca(size);
+    ATResponse* p_response = NULL;
+    RIL_GSM_BroadcastSmsConfigInfo** pGsmBci = (RIL_GSM_BroadcastSmsConfigInfo**)data;
+    RIL_GSM_BroadcastSmsConfigInfo gsmBci = { 0 };
 
     memset(channel, 0, size);
     memset(languageId, 0, size);
     RLOGD("requestSetGsmBroadcastConfig %zu, count %d", datalen, count);
 
-    for (i = 0; i < count; i ++) {
+    for (i = 0; i < count; i++) {
         gsmBci = *(pGsmBci[i]);
         setGsmBroadcastConfigData(gsmBci.fromServiceId, gsmBci.toServiceId, i,
             size, channel);
@@ -384,21 +387,21 @@ static void requestSetSmsBroadcastConfig(void *data, size_t datalen,
     at_response_free(p_response);
 }
 
-static void requestGetSmscAddress(void *data, size_t datalen, RIL_Token t)
+static void requestGetSmscAddress(void* data, size_t datalen, RIL_Token t)
 {
     (void)data;
     (void)datalen;
 
-    ATResponse *p_response = NULL;
+    ATResponse* p_response = NULL;
     int err = -1;
-    char *decidata = NULL;
+    char* decidata = NULL;
 
     err = at_send_command_singleline("AT+CSCA?", "+CSCA:", &p_response);
     if (err < 0 || p_response->success == 0) {
-       goto error;
+        goto error;
     }
 
-    char *line = p_response->p_intermediates->line;
+    char* line = p_response->p_intermediates->line;
     err = at_tok_start(&line);
     if (err < 0)
         goto error;
@@ -416,10 +419,10 @@ error:
     at_response_free(p_response);
 }
 
-static void requestSetSmscAddress(void *data, size_t datalen, RIL_Token t)
+static void requestSetSmscAddress(void* data, size_t datalen, RIL_Token t)
 {
-    ATResponse *p_response = NULL;
-    char cmd[64] = {0};
+    ATResponse* p_response = NULL;
+    char cmd[64] = { 0 };
     int err = -1;
 
     if (getSIMStatus() != SIM_READY) {
@@ -428,12 +431,12 @@ static void requestSetSmscAddress(void *data, size_t datalen, RIL_Token t)
     }
 
     if (data == NULL || strlen(data) == 0) {
-        RLOGE("SET_SMSC_ADDRESS invalid address: %s", (char *)data);
+        RLOGE("SET_SMSC_ADDRESS invalid address: %s", (char*)data);
         RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
         return;
     }
 
-    snprintf(cmd, sizeof(cmd), "AT+CSCA=%s,%d", (char *)data, (int)datalen);
+    snprintf(cmd, sizeof(cmd), "AT+CSCA=%s,%d", (char*)data, (int)datalen);
     err = at_send_command(cmd, &p_response);
     if (err < 0 || p_response->success == 0) {
         RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
@@ -444,14 +447,14 @@ static void requestSetSmscAddress(void *data, size_t datalen, RIL_Token t)
     at_response_free(p_response);
 }
 
-static void requestDeleteSmsOnSim(void *data, size_t datalen, RIL_Token t)
+static void requestDeleteSmsOnSim(void* data, size_t datalen, RIL_Token t)
 {
-    ATResponse *p_response = NULL;
+    ATResponse* p_response = NULL;
     int err = -1;
 
-    char *cmd;
+    char* cmd;
     p_response = NULL;
-    asprintf(&cmd, "AT+CMGD=%d", ((int *)data)[0]);
+    asprintf(&cmd, "AT+CMGD=%d", ((int*)data)[0]);
     err = at_send_command(cmd, &p_response);
     free(cmd);
 
@@ -464,7 +467,7 @@ static void requestDeleteSmsOnSim(void *data, size_t datalen, RIL_Token t)
     at_response_free(p_response);
 }
 
-void on_request_sms(int request, void *data, size_t datalen, RIL_Token t)
+void on_request_sms(int request, void* data, size_t datalen, RIL_Token t)
 {
     switch (request) {
     case RIL_REQUEST_SEND_SMS:
@@ -504,16 +507,16 @@ void on_request_sms(int request, void *data, size_t datalen, RIL_Token t)
     RLOGD("SMS on request sms end");
 }
 
-bool try_handle_unsol_sms(const char *s, const char *sms_pdu)
+bool try_handle_unsol_sms(const char* s, const char* sms_pdu)
 {
     bool ret = false;
 
     if (strStartsWith(s, "+CMT:")) {
-        RIL_onUnsolicitedResponse (RIL_UNSOL_RESPONSE_NEW_SMS,
+        RIL_onUnsolicitedResponse(RIL_UNSOL_RESPONSE_NEW_SMS,
             sms_pdu, strlen(sms_pdu));
         ret = true;
     } else if (strStartsWith(s, "+CDS:")) {
-        RIL_onUnsolicitedResponse (
+        RIL_onUnsolicitedResponse(
             RIL_UNSOL_RESPONSE_NEW_SMS_STATUS_REPORT,
             sms_pdu, strlen(sms_pdu));
         ret = true;

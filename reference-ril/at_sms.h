@@ -20,7 +20,7 @@
 #include <stdbool.h>
 #include <telephony/ril.h>
 
-void on_request_sms(int request, void *data, size_t datalen, RIL_Token t);
-bool try_handle_unsol_sms(const char *s, const char *sms_pdu);
+void on_request_sms(int request, void* data, size_t datalen, RIL_Token t);
+bool try_handle_unsol_sms(const char* s, const char* sms_pdu);
 
 #endif

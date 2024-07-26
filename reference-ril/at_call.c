@@ -20,14 +20,16 @@
 #include <assert.h>
 #include <stdio.h>
 #include <sys/cdefs.h>
+
 #include <log/log_radio.h>
-#include "atchannel.h"
-#include "at_tok.h"
-#include "misc.h"
+
 #include "at_call.h"
 #include "at_modem.h"
 #include "at_ril.h"
 #include "at_sim.h"
+#include "at_tok.h"
+#include "atchannel.h"
+#include "misc.h"
 
 #ifdef USE_TI_COMMANDS
 
@@ -56,16 +58,29 @@ static int s_repollCallsCount = 0;
 static int s_expectAnswer = 0;
 #endif /* WORKAROUND_ERRONEOUS_ANSWER */
 
-static int clccStateToRILState(int state, RIL_CallState *p_state)
+static int clccStateToRILState(int state, RIL_CallState* p_state)
 {
     switch (state) {
-        case 0: *p_state = RIL_CALL_ACTIVE;   return 0;
-        case 1: *p_state = RIL_CALL_HOLDING;  return 0;
-        case 2: *p_state = RIL_CALL_DIALING;  return 0;
-        case 3: *p_state = RIL_CALL_ALERTING; return 0;
-        case 4: *p_state = RIL_CALL_INCOMING; return 0;
-        case 5: *p_state = RIL_CALL_WAITING;  return 0;
-        default: return -1;
+    case 0:
+        *p_state = RIL_CALL_ACTIVE;
+        return 0;
+    case 1:
+        *p_state = RIL_CALL_HOLDING;
+        return 0;
+    case 2:
+        *p_state = RIL_CALL_DIALING;
+        return 0;
+    case 3:
+        *p_state = RIL_CALL_ALERTING;
+        return 0;
+    case 4:
+        *p_state = RIL_CALL_INCOMING;
+        return 0;
+    case 5:
+        *p_state = RIL_CALL_WAITING;
+        return 0;
+    default:
+        return -1;
     }
 }
 
@@ -73,54 +88,62 @@ static int clccStateToRILState(int state, RIL_CallState *p_state)
  * Note: directly modified line and has *p_call point directly into
  * modified line
  */
-static int callFromCLCCLine(char *line, RIL_Call *p_call)
+static int callFromCLCCLine(char* line, RIL_Call* p_call)
 {
-        // +CLCC: 1,0,2,0,0,\"+18005551212\",145
-        //     index,isMT,state,mode,isMpty(,number,TOA)?
+    // +CLCC: 1,0,2,0,0,\"+18005551212\",145
+    //     index,isMT,state,mode,isMpty(,number,TOA)?
 
     int err;
     int state;
     int mode;
 
     err = at_tok_start(&line);
-    if (err < 0) goto error;
+    if (err < 0)
+        goto error;
 
     err = at_tok_nextint(&line, &(p_call->index));
-    if (err < 0) goto error;
+    if (err < 0)
+        goto error;
 
     err = at_tok_nextbool(&line, &(p_call->isMT));
-    if (err < 0) goto error;
+    if (err < 0)
+        goto error;
 
     err = at_tok_nextint(&line, &state);
-    if (err < 0) goto error;
+    if (err < 0)
+        goto error;
 
     err = clccStateToRILState(state, &(p_call->state));
-    if (err < 0) goto error;
+    if (err < 0)
+        goto error;
 
     err = at_tok_nextint(&line, &mode);
-    if (err < 0) goto error;
+    if (err < 0)
+        goto error;
 
     p_call->isVoice = (mode == 0);
 
     err = at_tok_nextbool(&line, &(p_call->isMpty));
-    if (err < 0) goto error;
+    if (err < 0)
+        goto error;
 
     if (at_tok_hasmore(&line)) {
         err = at_tok_nextstr(&line, &(p_call->number));
 
         /* tolerate null here */
-        if (err < 0) return 0;
+        if (err < 0)
+            return 0;
 
         // Some lame implementations return strings
         // like "NOT AVAILABLE" in the CLCC line
         if (p_call->number != NULL
-            && 0 == strspn(p_call->number, "+0123456789")
-        ) {
+            && 0 == strspn(p_call->number, "+0123456789")) {
             p_call->number = NULL;
         }
 
         err = at_tok_nextint(&line, &p_call->toa);
-        if (err < 0) goto error;
+        if (err < 0)
+            goto error;
     }
 
     p_call->uusInfo = NULL;
@@ -132,15 +155,15 @@ error:
     return -1;
 }
 
-static void requestCallFailCause(void *data, size_t datalen, RIL_Token t)
+static void requestCallFailCause(void* data, size_t datalen, RIL_Token t)
 {
     (void)data;
     (void)datalen;
 
     int err = -1;
     int response;
-    char *line = NULL;
-    ATResponse *p_response = NULL;
+    char* line = NULL;
+    ATResponse* p_response = NULL;
 
     err = at_send_command_singleline("AT+CEER?", "+CEER:", &p_response);
     if (err < 0 || p_response->success == 0) {
@@ -149,10 +172,12 @@ static void requestCallFailCause(void *data, size_t datalen, RIL_Token t)
 
     line = p_response->p_intermediates->line;
     err = at_tok_start(&line);
-    if (err < 0) goto error;
+    if (err < 0)
+        goto error;
 
     err = at_tok_nextint(&line, &response);
-    if (err < 0) goto error;
+    if (err < 0)
+        goto error;
 
     RIL_onRequestComplete(t, RIL_E_SUCCESS, &response, sizeof(response));
     at_response_free(p_response);
@@ -164,17 +189,17 @@ error:
 }
 
 // Hang up, reject, conference, call waiting
-static void requestCallSelection(void *data, size_t datalen, RIL_Token t, int request)
+static void requestCallSelection(void* data, size_t datalen, RIL_Token t, int request)
 {
     (void)data;
     (void)datalen;
 
     // 3GPP 22.030 6.5.5
-    char hangupWaiting[]    = "AT+CHLD=0";
+    char hangupWaiting[] = "AT+CHLD=0";
     char hangupForeground[] = "AT+CHLD=1";
-    char switchWaiting[]    = "AT+CHLD=2";
-    char conference[]       = "AT+CHLD=3";
-    char reject[]           = "ATH";
+    char switchWaiting[] = "AT+CHLD=2";
+    char conference[] = "AT+CHLD=3";
+    char reject[] = "ATH";
 
     char* atCommand;
 
@@ -184,34 +209,34 @@ static void requestCallSelection(void *data, size_t datalen, RIL_Token t, int re
     }
 
     switch (request) {
-        case RIL_REQUEST_HANGUP_WAITING_OR_BACKGROUND:
-            // "Releases all held calls or sets User Determined User Busy
-            //  (UDUB) for a waiting call."
-            atCommand = hangupWaiting;
-            break;
-        case RIL_REQUEST_HANGUP_FOREGROUND_RESUME_BACKGROUND:
-            // "Releases all active calls (if any exist) and accepts
-            //  the other (held or waiting) call."
-            atCommand = hangupForeground;
-            break;
-        case RIL_REQUEST_SWITCH_WAITING_OR_HOLDING_AND_ACTIVE:
-            // "Places all active calls (if any exist) on hold and accepts
-            //  the other (held or waiting) call."
-            atCommand = switchWaiting;
+    case RIL_REQUEST_HANGUP_WAITING_OR_BACKGROUND:
+        // "Releases all held calls or sets User Determined User Busy
+        //  (UDUB) for a waiting call."
+        atCommand = hangupWaiting;
+        break;
+    case RIL_REQUEST_HANGUP_FOREGROUND_RESUME_BACKGROUND:
+        // "Releases all active calls (if any exist) and accepts
+        //  the other (held or waiting) call."
+        atCommand = hangupForeground;
+        break;
+    case RIL_REQUEST_SWITCH_WAITING_OR_HOLDING_AND_ACTIVE:
+        // "Places all active calls (if any exist) on hold and accepts
+        //  the other (held or waiting) call."
+        atCommand = switchWaiting;
 #ifdef WORKAROUND_ERRONEOUS_ANSWER
-            s_expectAnswer = 1;
+        s_expectAnswer = 1;
 #endif /* WORKAROUND_ERRONEOUS_ANSWER */
-            break;
-        case RIL_REQUEST_CONFERENCE:
-            // "Adds a held call to the conversation"
-            atCommand = conference;
-            break;
-        case RIL_REQUEST_UDUB:
-            // User determined user busy (reject)
-            atCommand = reject;
-            break;
-        default:
-            assert(0);
+        break;
+    case RIL_REQUEST_CONFERENCE:
+        // "Adds a held call to the conversation"
+        atCommand = conference;
+        break;
+    case RIL_REQUEST_UDUB:
+        // User determined user busy (reject)
+        atCommand = reject;
+        break;
+    default:
+        assert(0);
     }
 
     at_send_command(atCommand, NULL);
@@ -220,18 +245,18 @@ static void requestCallSelection(void *data, size_t datalen, RIL_Token t, int re
     RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
 }
 
-static void requestGetCurrentCalls(void *data, size_t datalen, RIL_Token t)
+static void requestGetCurrentCalls(void* data, size_t datalen, RIL_Token t)
 {
     (void)data;
     (void)datalen;
 
     int err;
-    ATResponse *p_response;
-    ATLine *p_cur;
+    ATResponse* p_response;
+    ATLine* p_cur;
     int countCalls;
     int countValidCalls;
-    RIL_Call *p_calls;
-    RIL_Call **pp_calls;
+    RIL_Call* p_calls;
+    RIL_Call** pp_calls;
     int i;
     int needRepoll = 0;
 
@@ -242,7 +267,7 @@ static void requestGetCurrentCalls(void *data, size_t datalen, RIL_Token t)
     s_incomingOrWaitingLine = -1;
 #endif /*WORKAROUND_ERRONEOUS_ANSWER*/
 
-    err = at_send_command_multiline ("AT+CLCC", "+CLCC:", &p_response);
+    err = at_send_command_multiline("AT+CLCC", "+CLCC:", &p_response);
 
     if (err != 0 || p_response->success == 0) {
         RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
@@ -250,28 +275,22 @@ static void requestGetCurrentCalls(void *data, size_t datalen, RIL_Token t)
     }
 
     /* count the calls */
-    for (countCalls = 0, p_cur = p_response->p_intermediates
-            ; p_cur != NULL
-            ; p_cur = p_cur->p_next
-    ) {
-        countCalls ++;
+    for (countCalls = 0, p_cur = p_response->p_intermediates; p_cur != NULL; p_cur = p_cur->p_next) {
+        countCalls++;
     }
 
     /* yes, there's an array of pointers and then an array of structures */
 
-    pp_calls = (RIL_Call **)alloca(countCalls * sizeof(RIL_Call *));
-    p_calls = (RIL_Call *)alloca(countCalls * sizeof(RIL_Call));
+    pp_calls = (RIL_Call**)alloca(countCalls * sizeof(RIL_Call*));
+    p_calls = (RIL_Call*)alloca(countCalls * sizeof(RIL_Call));
     memset(p_calls, 0, countCalls * sizeof(RIL_Call));
 
     /* init the pointer array */
-    for (i = 0; i < countCalls ; i ++) {
+    for (i = 0; i < countCalls; i++) {
         pp_calls[i] = &(p_calls[i]);
     }
 
-    for (countValidCalls = 0, p_cur = p_response->p_intermediates
-            ; p_cur != NULL
-            ; p_cur = p_cur->p_next
-    ) {
+    for (countValidCalls = 0, p_cur = p_response->p_intermediates; p_cur != NULL; p_cur = p_cur->p_next) {
         err = callFromCLCCLine(p_cur->line, p_calls + countValidCalls);
 
         if (err != 0) {
@@ -280,19 +299,17 @@ static void requestGetCurrentCalls(void *data, size_t datalen, RIL_Token t)
 
 #ifdef WORKAROUND_ERRONEOUS_ANSWER
         if (p_calls[countValidCalls].state == RIL_CALL_INCOMING
-            || p_calls[countValidCalls].state == RIL_CALL_WAITING
-        ) {
+            || p_calls[countValidCalls].state == RIL_CALL_WAITING) {
             s_incomingOrWaitingLine = p_calls[countValidCalls].index;
         }
 #endif /*WORKAROUND_ERRONEOUS_ANSWER*/
 
         if (p_calls[countValidCalls].state != RIL_CALL_ACTIVE
-            && p_calls[countValidCalls].state != RIL_CALL_HOLDING
-        ) {
+            && p_calls[countValidCalls].state != RIL_CALL_HOLDING) {
             needRepoll = 1;
         }
 
-        countValidCalls ++;
+        countValidCalls++;
     }
 
 #ifdef WORKAROUND_ERRONEOUS_ANSWER
@@ -304,19 +321,18 @@ static void requestGetCurrentCalls(void *data, size_t datalen, RIL_Token t)
     // This is probably a bug, and the call will probably
     // disappear from the call list in the next poll
     if (prevIncomingOrWaitingLine >= 0
-            && s_incomingOrWaitingLine < 0
-            && s_expectAnswer == 0
-    ) {
-        for (i = 0; i < countValidCalls ; i ++) {
+        && s_incomingOrWaitingLine < 0
+        && s_expectAnswer == 0) {
+        for (i = 0; i < countValidCalls; i++) {
 
             if (p_calls[i].index == prevIncomingOrWaitingLine
-                    && p_calls[i].state == RIL_CALL_ACTIVE
-                    && s_repollCallsCount < REPOLL_CALLS_COUNT_MAX
-            ) {
+                && p_calls[i].state == RIL_CALL_ACTIVE
+                && s_repollCallsCount < REPOLL_CALLS_COUNT_MAX) {
                 RLOGI(
                     "Hit WORKAROUND_ERRONOUS_ANSWER case."
-                    " Repoll count: %d\n", s_repollCallsCount);
-                s_repollCallsCount ++;
+                    " Repoll count: %d\n",
+                    s_repollCallsCount);
+                s_repollCallsCount++;
                 goto error;
             }
         }
@@ -327,17 +343,17 @@ static void requestGetCurrentCalls(void *data, size_t datalen, RIL_Token t)
 #endif /*WORKAROUND_ERRONEOUS_ANSWER*/
 
     RIL_onRequestComplete(t, RIL_E_SUCCESS, pp_calls,
-            countValidCalls * sizeof (RIL_Call *));
+        countValidCalls * sizeof(RIL_Call*));
 
     at_response_free(p_response);
 
 #ifdef POLL_CALL_STATE
-    if (countValidCalls) {  // We don't seem to get a "NO CARRIER" message from
-                            // smd, so we're forced to poll until the call ends.
+    if (countValidCalls) { // We don't seem to get a "NO CARRIER" message from
+                           // smd, so we're forced to poll until the call ends.
 #else
     if (needRepoll) {
 #endif
-        //RIL_requestTimedCallback (sendCallStateChanged, NULL, &TIMEVAL_CALLSTATEPOLL);
+        // RIL_requestTimedCallback (sendCallStateChanged, NULL, &TIMEVAL_CALLSTATEPOLL);
     }
 
     return;
@@ -348,13 +364,13 @@ error:
 #endif
 }
 
-static void requestDtmfStart(void *data, size_t datalen, RIL_Token t)
+static void requestDtmfStart(void* data, size_t datalen, RIL_Token t)
 {
     (void)datalen;
 
     char c_key;
-    char *cmd;
-    ATResponse *p_response = NULL;
+    char* cmd;
+    ATResponse* p_response = NULL;
     int err = -1;
 
     if (NULL == data) {
@@ -363,9 +379,8 @@ static void requestDtmfStart(void *data, size_t datalen, RIL_Token t)
         return;
     }
 
-    c_key = ((char *)data)[0];
-    if (!(c_key >= '0' && c_key <= '9') && c_key != '#' && c_key != '*' &&
-        !(c_key >= 'A' && c_key <= 'D')) {
+    c_key = ((char*)data)[0];
+    if (!(c_key >= '0' && c_key <= '9') && c_key != '#' && c_key != '*' && !(c_key >= 'A' && c_key <= 'D')) {
         RLOGE("Invalid argument in RIL");
         RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
         return;
@@ -384,11 +399,11 @@ static void requestDtmfStart(void *data, size_t datalen, RIL_Token t)
     at_response_free(p_response);
 }
 
-static void requestDtmfStop(void *data, size_t datalen, RIL_Token t)
+static void requestDtmfStop(void* data, size_t datalen, RIL_Token t)
 {
     (void)datalen;
 
-    ATResponse *p_response = NULL;
+    ATResponse* p_response = NULL;
     int err = -1;
 
     if (NULL != data) {
@@ -407,21 +422,27 @@ static void requestDtmfStop(void *data, size_t datalen, RIL_Token t)
     at_response_free(p_response);
 }
 
-static void requestDial(void *data, size_t datalen, RIL_Token t)
+static void requestDial(void* data, size_t datalen, RIL_Token t)
 {
     (void)datalen;
 
-    RIL_Dial *p_dial;
-    char *cmd;
-    const char *clir;
+    RIL_Dial* p_dial;
+    char* cmd;
+    const char* clir;
 
-    p_dial = (RIL_Dial *)data;
+    p_dial = (RIL_Dial*)data;
 
     switch (p_dial->clir) {
-        case 1: clir = "I"; break;          /* invocation */
-        case 2: clir = "i"; break;          /* suppression */
-        default:
-        case 0: clir = ""; break;           /* subscription default */
+    case 1:
+        clir = "I";
+        break; /* invocation */
+    case 2:
+        clir = "i";
+        break; /* suppression */
+    default:
+    case 0:
+        clir = "";
+        break; /* subscription default */
     }
 
     asprintf(&cmd, "ATD%s%s;", p_dial->address, clir);
@@ -433,14 +454,14 @@ static void requestDial(void *data, size_t datalen, RIL_Token t)
     RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
 }
 
-static void requestHangup(void *data, size_t datalen, RIL_Token t)
+static void requestHangup(void* data, size_t datalen, RIL_Token t)
 {
     (void)datalen;
 
-    int *p_line;
-    char *cmd;
+    int* p_line;
+    char* cmd;
 
-    p_line = (int *)data;
+    p_line = (int*)data;
 
     // 3GPP 22.030 6.5.5
     // "Releases a specific active call X"
@@ -449,47 +470,47 @@ static void requestHangup(void *data, size_t datalen, RIL_Token t)
     free(cmd);
 
     /* success or failure is ignored by the upper layer here.
-       it will call GET_CURRENT_CALLS and determine success that way */
+     * it will call GET_CURRENT_CALLS and determine success that way */
     RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
 }
 
-static void requestEccDial(void *data, size_t datalen, RIL_Token t)
+static void requestEccDial(void* data, size_t datalen, RIL_Token t)
 {
     (void)datalen;
 
-    char cmd[64] = {0};
-    const char *clir = NULL;
+    char cmd[64] = { 0 };
+    const char* clir = NULL;
     int err = -1;
-    RIL_EmergencyDial *p_eccDial = (RIL_EmergencyDial *)data;
+    RIL_EmergencyDial* p_eccDial = (RIL_EmergencyDial*)data;
 
     switch (p_eccDial->dialInfo.clir) {
-        case 0:         /* subscription default */
-            clir = "";
-            break;
-        case 1:         /* invocation */
-            clir = "I";
-            break;
-        case 2:         /* suppression */
-            clir = "i";
-            break;
-        default:
-            break;
+    case 0: /* subscription default */
+        clir = "";
+        break;
+    case 1: /* invocation */
+        clir = "I";
+        break;
+    case 2: /* suppression */
+        clir = "i";
+        break;
+    default:
+        break;
     }
 
-    if (p_eccDial->routing == ROUTING_MERGENCY ||
-        p_eccDial->routing ==  ROUTING_UNKNOWN) {
+    if (p_eccDial->routing == ROUTING_MERGENCY || p_eccDial->routing == ROUTING_UNKNOWN) {
         if (p_eccDial->categories == CATEGORY_UNSPECIFIED) {
             snprintf(cmd, sizeof(cmd), "ATD%s@,#%s;", p_eccDial->dialInfo.address, clir);
         } else {
             snprintf(cmd, sizeof(cmd), "ATD%s@%d,#%s;", p_eccDial->dialInfo.address,
                 p_eccDial->categories, clir);
         }
-    } else {  // ROUTING_NORMAL
+    } else { // ROUTING_NORMAL
         snprintf(cmd, sizeof(cmd), "ATD%s%s;", p_eccDial->dialInfo.address, clir);
     }
 
     err = at_send_command(cmd, NULL);
-    if (err != 0) goto error;
+    if (err != 0)
+        goto error;
 
     RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
     return;
@@ -508,9 +529,9 @@ error:
  * @param number    "number" from 27.007 7.17( MT only, may be NULL.)
  */
 static void unsolicitedSuppSvcNotification(int notificationType,
-    int code, int index, int type, const char *number)
+    int code, int index, int type, const char* number)
 {
-    RIL_SuppSvcNotification response = {0};
+    RIL_SuppSvcNotification response = { 0 };
 
     if ((notificationType != 0) && (notificationType != 1)) {
         RLOGW("unsolicitedSuppSvcNotification notificationType is out of range!");
@@ -526,7 +547,7 @@ static void unsolicitedSuppSvcNotification(int notificationType,
 
     if (number != NULL) {
         RLOGD("unsolicitedSuppSvcNotification response number [%s]!", number);
-        response.number = (char *)number;
+        response.number = (char*)number;
     } else {
         response.number = NULL;
     }
@@ -534,15 +555,16 @@ static void unsolicitedSuppSvcNotification(int notificationType,
     RIL_onUnsolicitedResponse(RIL_UNSOL_SUPP_SVC_NOTIFICATION, &response, sizeof(RIL_SuppSvcNotification));
 }
 
-static void requestChangeBarringPassword(char **data, size_t datalen, RIL_Token t)
+static void requestChangeBarringPassword(char** data, size_t datalen, RIL_Token t)
 {
     int err = -1;
-    char cmd[64] = {0};
-    ATResponse *p_response = NULL;
+    char cmd[64] = { 0 };
+    ATResponse* p_response = NULL;
 
-    if (datalen != 3 * sizeof(char *) || data[0] == NULL || data[1] == NULL ||
-        data[2] == NULL || strlen(data[0]) == 0 ||  strlen(data[1]) == 0 ||
-        strlen(data[2]) == 0) {
+    if (datalen != 3 * sizeof(char*)
+        || data[0] == NULL || data[1] == NULL
+        || data[2] == NULL || strlen(data[0]) == 0
+        || strlen(data[1]) == 0 || strlen(data[2]) == 0) {
         RIL_onRequestComplete(t, RIL_E_INVALID_ARGUMENTS, NULL, 0);
         return;
     }
@@ -563,15 +585,15 @@ error:
     at_response_free(p_response);
 }
 
-static void requestSetCallWaiting(void *data, size_t datalen, RIL_Token t)
+static void requestSetCallWaiting(void* data, size_t datalen, RIL_Token t)
 {
     (void)datalen;
 
-    ATResponse *p_response = NULL;
+    ATResponse* p_response = NULL;
     int err = -1;
-    char cmd[32] = {0};
-    int enable = ((int *)data)[0];
-    int serviceClass = ((int *)data)[1];
+    char cmd[32] = { 0 };
+    int enable = ((int*)data)[0];
+    int serviceClass = ((int*)data)[1];
 
     if (serviceClass == 0) {
         snprintf(cmd, sizeof(cmd), "AT+CCWA=1,%d", enable);
@@ -589,17 +611,17 @@ static void requestSetCallWaiting(void *data, size_t datalen, RIL_Token t)
     at_response_free(p_response);
 }
 
-static void requestQueryCallWaiting(void *data, size_t datalen, RIL_Token t)
+static void requestQueryCallWaiting(void* data, size_t datalen, RIL_Token t)
 {
     (void)datalen;
 
     int err = -1, mode = 0;
-    int serviceClass = ((int *)data)[0];
-    int response[2] = {0, 0};
-    char cmd[32] = {0};
-    char *line;
-    ATLine *p_cur;
-    ATResponse *p_response = NULL;
+    int serviceClass = ((int*)data)[0];
+    int response[2] = { 0, 0 };
+    char cmd[32] = { 0 };
+    char* line;
+    ATLine* p_cur;
+    ATResponse* p_response = NULL;
 
     if (serviceClass == 0) {
         snprintf(cmd, sizeof(cmd), "AT+CCWA=1,2");
@@ -615,13 +637,16 @@ static void requestQueryCallWaiting(void *data, size_t datalen, RIL_Token t)
     for (p_cur = p_response->p_intermediates; p_cur != NULL; p_cur = p_cur->p_next) {
         line = p_cur->line;
         err = at_tok_start(&line);
-        if (err < 0) goto error;
+        if (err < 0)
+            goto error;
 
         err = at_tok_nextint(&line, &mode);
-        if (err < 0) goto error;
+        if (err < 0)
+            goto error;
 
         err = at_tok_nextint(&line, &serviceClass);
-        if (err < 0) goto error;
+        if (err < 0)
+            goto error;
 
         response[0] = mode;
         response[1] |= serviceClass;
@@ -636,39 +661,45 @@ error:
     at_response_free(p_response);
 }
 
-static int forwardFromCCFCULine(char *line, RIL_CallForwardInfo *p_forward)
+static int forwardFromCCFCULine(char* line, RIL_CallForwardInfo* p_forward)
 {
     int err = -1;
     int i = 0;
 
     if (line == NULL || p_forward == NULL) {
-      goto error;
+        goto error;
     }
 
     err = at_tok_start(&line);
-    if (err < 0) goto error;
+    if (err < 0)
+        goto error;
 
     err = at_tok_nextint(&line, &(p_forward->status));
-    if (err < 0) goto error;
+    if (err < 0)
+        goto error;
 
     err = at_tok_nextint(&line, &(p_forward->serviceClass));
-    if (err < 0) goto error;
+    if (err < 0)
+        goto error;
 
     if (at_tok_hasmore(&line)) {
         int numberType = 0;
         err = at_tok_nextint(&line, &numberType);
-        if (err < 0) goto error;
+        if (err < 0)
+            goto error;
 
         err = at_tok_nextint(&line, &p_forward->toa);
-        if (err < 0) goto error;
+        if (err < 0)
+            goto error;
 
         err = at_tok_nextstr(&line, &(p_forward->number));
 
         /* tolerate null here */
-        if (err < 0) return 0;
+        if (err < 0)
+            return 0;
 
         if (at_tok_hasmore(&line)) {
-            for (i = 0; i < 2; i ++) {
+            for (i = 0; i < 2; i++) {
                 skipNextComma(&line);
             }
 
@@ -687,13 +718,13 @@ error:
     return -1;
 }
 
-static void requestQueryCallForward(RIL_CallForwardInfo *data,
+static void requestQueryCallForward(RIL_CallForwardInfo* data,
     size_t datalen, RIL_Token t)
 {
     int err = -1;
-    char cmd[128] = {0};
-    ATResponse *p_response = NULL;
-    ATLine *p_cur = NULL;
+    char cmd[128] = { 0 };
+    ATResponse* p_response = NULL;
+    ATLine* p_cur = NULL;
 
     if (datalen != sizeof(*data)) {
         goto error;
@@ -713,31 +744,32 @@ static void requestQueryCallForward(RIL_CallForwardInfo *data,
     int i = 0;
 
     for (p_cur = p_response->p_intermediates; p_cur != NULL;
-        p_cur = p_cur->p_next, forwardCount++) {
+         p_cur = p_cur->p_next, forwardCount++) {
     }
 
-    forwardList = (RIL_CallForwardInfo **)
-        alloca(forwardCount * sizeof(RIL_CallForwardInfo *));
+    forwardList = (RIL_CallForwardInfo**)
+        alloca(forwardCount * sizeof(RIL_CallForwardInfo*));
 
-    forwardPool = (RIL_CallForwardInfo *)
+    forwardPool = (RIL_CallForwardInfo*)
         alloca(forwardCount * sizeof(RIL_CallForwardInfo));
 
     memset(forwardPool, 0, forwardCount * sizeof(RIL_CallForwardInfo));
 
     /* init the pointer array */
-    for (i = 0; i < forwardCount; i ++) {
+    for (i = 0; i < forwardCount; i++) {
         forwardList[i] = &(forwardPool[i]);
     }
 
     for (p_cur = p_response->p_intermediates;
-        p_cur != NULL; p_cur = p_cur->p_next) {
+         p_cur != NULL; p_cur = p_cur->p_next) {
         err = forwardFromCCFCULine(p_cur->line, forwardList[validCount]);
         forwardList[validCount]->reason = data->reason;
-        if (err == 0) validCount ++;
+        if (err == 0)
+            validCount++;
     }
 
     RIL_onRequestComplete(t, RIL_E_SUCCESS, validCount ? forwardList : NULL,
-        validCount * sizeof (RIL_CallForwardInfo *));
+        validCount * sizeof(RIL_CallForwardInfo*));
     at_response_free(p_response);
     return;
 
@@ -746,16 +778,15 @@ error:
     at_response_free(p_response);
 }
 
-static void requestSetCallForward(RIL_CallForwardInfo *data,
+static void requestSetCallForward(RIL_CallForwardInfo* data,
     size_t datalen, RIL_Token t)
 {
     int err = -1;
-    char cmd[128] = {0};
+    char cmd[128] = { 0 };
     size_t offset = 0;
-    ATResponse *p_response = NULL;
+    ATResponse* p_response = NULL;
 
-    if (datalen != sizeof(*data) ||
-        (data->status == 3 && data->number == NULL)) {
+    if (datalen != sizeof(*data) || (data->status == 3 && data->number == NULL)) {
         goto error;
     }
 
@@ -792,14 +823,14 @@ error:
     at_response_free(p_response);
 }
 
-static void requestSetClir(void *data, size_t datalen, RIL_Token t)
+static void requestSetClir(void* data, size_t datalen, RIL_Token t)
 {
     (void)datalen;
 
     int err = -1;
-    int n = ((int *)data)[0];
-    char cmd[64] = {0};
-    ATResponse *p_response = NULL;
+    int n = ((int*)data)[0];
+    char cmd[64] = { 0 };
+    ATResponse* p_response = NULL;
 
     snprintf(cmd, sizeof(cmd), "AT+CLIR=%d", n);
     err = at_send_command(cmd, &p_response);
@@ -812,15 +843,15 @@ static void requestSetClir(void *data, size_t datalen, RIL_Token t)
     at_response_free(p_response);
 }
 
-static void requestQueryClir(void *data, size_t datalen, RIL_Token t)
+static void requestQueryClir(void* data, size_t datalen, RIL_Token t)
 {
     (void)datalen;
     (void)data;
 
     int err = -1;
-    int response[2] = {1, 1};
-    char *line = NULL;
-    ATResponse *p_response = NULL;
+    int response[2] = { 1, 1 };
+    char* line = NULL;
+    ATResponse* p_response = NULL;
 
     if (getSIMStatus() == SIM_ABSENT) {
         RIL_onRequestComplete(t, RIL_E_MODEM_ERR, NULL, 0);
@@ -834,13 +865,16 @@ static void requestQueryClir(void *data, size_t datalen, RIL_Token t)
 
     line = p_response->p_intermediates->line;
     err = at_tok_start(&line);
-    if (err < 0) goto error;
+    if (err < 0)
+        goto error;
 
     err = at_tok_nextint(&line, &response[0]);
-    if (err < 0) goto error;
+    if (err < 0)
+        goto error;
 
     err = at_tok_nextint(&line, &response[1]);
-    if (err < 0) goto error;
+    if (err < 0)
+        goto error;
 
     RIL_onRequestComplete(t, RIL_E_SUCCESS, response, sizeof(response));
     at_response_free(p_response);
@@ -851,7 +885,7 @@ error:
     at_response_free(p_response);
 }
 
-static void requestQueryClip(void *data, size_t datalen, RIL_Token t)
+static void requestQueryClip(void* data, size_t datalen, RIL_Token t)
 {
     (void)datalen;
     (void)data;
@@ -859,8 +893,8 @@ static void requestQueryClip(void *data, size_t datalen, RIL_Token t)
     int err = -1;
     int skip = 0;
     int response = 0;
-    char *line = NULL;
-    ATResponse *p_response = NULL;
+    char* line = NULL;
+    ATResponse* p_response = NULL;
 
     if (getSIMStatus() == SIM_ABSENT) {
         RIL_onRequestComplete(t, RIL_E_MODEM_ERR, NULL, 0);
@@ -874,13 +908,16 @@ static void requestQueryClip(void *data, size_t datalen, RIL_Token t)
 
     line = p_response->p_intermediates->line;
     err = at_tok_start(&line);
-    if (err < 0) goto error;
+    if (err < 0)
+        goto error;
 
     err = at_tok_nextint(&line, &skip);
-    if (err < 0) goto error;
+    if (err < 0)
+        goto error;
 
     err = at_tok_nextint(&line, &response);
-    if (err < 0) goto error;
+    if (err < 0)
+        goto error;
 
     RIL_onRequestComplete(t, RIL_E_SUCCESS, &response, sizeof(response));
     at_response_free(p_response);
@@ -891,15 +928,15 @@ error:
     at_response_free(p_response);
 }
 
-static void requestGetMute(void *data, size_t datalen, RIL_Token t)
+static void requestGetMute(void* data, size_t datalen, RIL_Token t)
 {
     (void)data;
     (void)datalen;
 
     int err = -1;
-    int muteResponse = 0;           // Mute disabled
-    char *line = NULL;
-    ATResponse *p_response = NULL;
+    int muteResponse = 0; // Mute disabled
+    char* line = NULL;
+    ATResponse* p_response = NULL;
 
     err = at_send_command_singleline("AT+CMUT?", "+CMUT:", &p_response);
     if (err < 0 || p_response->success) {
@@ -908,7 +945,8 @@ static void requestGetMute(void *data, size_t datalen, RIL_Token t)
 
     line = p_response->p_intermediates->line;
     err = at_tok_start(&line);
-    if (err < 0) goto done;
+    if (err < 0)
+        goto done;
 
     at_tok_nextint(&line, &muteResponse);
 
@@ -917,15 +955,15 @@ done:
     at_response_free(p_response);
 }
 
-static void requestSetMute(void *data, size_t datalen, RIL_Token t)
+static void requestSetMute(void* data, size_t datalen, RIL_Token t)
 {
     (void)datalen;
 
     int err = -1;
-    char cmd[64] = {0};
-    ATResponse *p_response = NULL;
+    char cmd[64] = { 0 };
+    ATResponse* p_response = NULL;
 
-    snprintf(cmd, sizeof(cmd), "AT+CMUT=%d", ((int *)data)[0]);
+    snprintf(cmd, sizeof(cmd), "AT+CMUT=%d", ((int*)data)[0]);
     err = at_send_command(cmd, &p_response);
 
     if (err < 0 || p_response->success) {
@@ -937,13 +975,13 @@ static void requestSetMute(void *data, size_t datalen, RIL_Token t)
     at_response_free(p_response);
 }
 
-static void requestExitEmergencyMode(void *data, size_t datalen, RIL_Token t)
+static void requestExitEmergencyMode(void* data, size_t datalen, RIL_Token t)
 {
     (void)data;
     (void)datalen;
 
     int err;
-    ATResponse *p_response = NULL;
+    ATResponse* p_response = NULL;
 
     err = at_send_command("AT+WSOS=0", &p_response);
 
@@ -955,7 +993,7 @@ static void requestExitEmergencyMode(void *data, size_t datalen, RIL_Token t)
     RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
 }
 
-static void requestAnswer(void *data, size_t datalen, RIL_Token t)
+static void requestAnswer(void* data, size_t datalen, RIL_Token t)
 {
     (void)data;
     (void)datalen;
@@ -970,7 +1008,7 @@ static void requestAnswer(void *data, size_t datalen, RIL_Token t)
     RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
 }
 
-static void requestSeparateConnection(void *data, size_t datalen, RIL_Token t)
+static void requestSeparateConnection(void* data, size_t datalen, RIL_Token t)
 {
     char cmd[12];
     int party = ((int*)data)[0];
@@ -987,7 +1025,7 @@ static void requestSeparateConnection(void *data, size_t datalen, RIL_Token t)
     }
 }
 
-static void requestExitEmergencyCallbackMode(void *data, size_t datalen, RIL_Token t)
+static void requestExitEmergencyCallbackMode(void* data, size_t datalen, RIL_Token t)
 {
     if (TECH_BIT(getModemInfo()) == MDM_CDMA) {
         requestExitEmergencyMode(data, datalen, t);
@@ -997,7 +1035,7 @@ static void requestExitEmergencyCallbackMode(void *data, size_t datalen, RIL_Tok
     }
 }
 
-static void requestGetVoiceRadioTech(void *data, size_t datalen, RIL_Token t)
+static void requestGetVoiceRadioTech(void* data, size_t datalen, RIL_Token t)
 {
     int tech = techFromModemType(TECH(getModemInfo()));
     if (tech < 0)
@@ -1006,7 +1044,7 @@ static void requestGetVoiceRadioTech(void *data, size_t datalen, RIL_Token t)
         RIL_onRequestComplete(t, RIL_E_SUCCESS, &tech, sizeof(tech));
 }
 
-static void requestGetTtyMode(void *data, size_t datalen, RIL_Token t)
+static void requestGetTtyMode(void* data, size_t datalen, RIL_Token t)
 {
     (void)data;
     (void)datalen;
@@ -1017,7 +1055,7 @@ static void requestGetTtyMode(void *data, size_t datalen, RIL_Token t)
     RIL_onRequestComplete(t, RIL_E_SUCCESS, &ttyModeResponse, sizeof(ttyModeResponse));
 }
 
-void on_request_call(int request, void *data, size_t datalen, RIL_Token t)
+void on_request_call(int request, void* data, size_t datalen, RIL_Token t)
 {
     switch (request) {
     case RIL_REQUEST_GET_CURRENT_CALLS:
@@ -1108,20 +1146,19 @@ void on_request_call(int request, void *data, size_t datalen, RIL_Token t)
     RLOGD("On request call end\n");
 }
 
-bool try_handle_unsol_call(const char *s)
+bool try_handle_unsol_call(const char* s)
 {
     bool ret = false;
     char *line = NULL, *p;
 
     if (strStartsWith(s, "+CRING:")
-        || strStartsWith(s,"RING")
-        || strStartsWith(s,"NO CARRIER")
-        || strStartsWith(s,"+CCWA")
-        || strStartsWith(s,"ALERTING")
-    ) {
-        RIL_onUnsolicitedResponse (RIL_UNSOL_RESPONSE_CALL_STATE_CHANGED, NULL, 0);
+        || strStartsWith(s, "RING")
+        || strStartsWith(s, "NO CARRIER")
+        || strStartsWith(s, "+CCWA")
+        || strStartsWith(s, "ALERTING")) {
+        RIL_onUnsolicitedResponse(RIL_UNSOL_RESPONSE_CALL_STATE_CHANGED, NULL, 0);
 #ifdef WORKAROUND_FAKE_CGEV
-        RIL_requestTimedCallback (onDataCallListChanged, NULL, NULL);       // TODO use new function
+        RIL_requestTimedCallback(onDataCallListChanged, NULL, NULL); // TODO use new function
 #endif /* WORKAROUND_FAKE_CGEV */
 
         ret = true;
@@ -1150,8 +1187,7 @@ bool try_handle_unsol_call(const char *s)
         }
         free(line);
 
-        unsol = state ?
-            RIL_UNSOL_ENTER_EMERGENCY_CALLBACK_MODE : RIL_UNSOL_EXIT_EMERGENCY_CALLBACK_MODE;
+        unsol = state ? RIL_UNSOL_ENTER_EMERGENCY_CALLBACK_MODE : RIL_UNSOL_EXIT_EMERGENCY_CALLBACK_MODE;
 
         RIL_onUnsolicitedResponse(unsol, NULL, 0);
         ret = true;

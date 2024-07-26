@@ -17,7 +17,8 @@
 #include <telephony/librilutils.h>
 #include <time.h>
 
-uint64_t ril_nano_time() {
+uint64_t ril_nano_time()
+{
     struct timespec now;
     clock_gettime(CLOCK_MONOTONIC, &now);
     return now.tv_sec * 1000000000LL + now.tv_nsec;

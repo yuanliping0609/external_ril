@@ -17,19 +17,19 @@
 #ifndef __CUTILS_STRING16_H
 #define __CUTILS_STRING16_H
 
-#include <stdint.h>
 #include <stddef.h>
+#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 #if !defined(__cplusplus) || (201103L > __cplusplus) /* these are builtin types for C++11 */
-    typedef unsigned short char16_t;
+typedef unsigned short char16_t;
 #endif
 
-char * strndup16to8 (const char16_t* s, size_t n);
-char16_t * strdup8to16 (const char* s, size_t *out_len);
+char* strndup16to8(const char16_t* s, size_t n);
+char16_t* strdup8to16(const char* s, size_t* out_len);
 
 #ifdef __cplusplus
 }

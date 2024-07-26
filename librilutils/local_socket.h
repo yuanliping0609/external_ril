@@ -16,22 +16,21 @@
 #ifndef __LOCAL_SOCKET_H__
 #define __LOCAL_SOCKET_H__
 
-
 #define LOCAL_SOCKET_ENV_PREFIX "LOCAL_SOCKET_"
 #define LOCAL_SOCKET_DIR "/dev/socket"
 
+#include <errno.h>
+#include <log/log_radio.h>
 #include <string.h>
 #include <sys/types.h>
 #include <telephony/ril.h>
-#include <errno.h>
-#include <log/log_radio.h>
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-int ril_socket_create(const char *name, int type);
+int ril_socket_create(const char* name, int type);
 int ril_socket_init(void);
-int local_get_control_socket(const char *name);
+int local_get_control_socket(const char* name);
 
 #ifdef __cplusplus
 }

@@ -21,23 +21,22 @@
 #ifndef _LIBRIL_RECORD_STREAM_H
 #define _LIBRIL_RECORD_STREAM_H
 
+#include <stdlib.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-
 typedef struct RecordStream RecordStream;
 
-extern RecordStream *record_stream_new(int fd, size_t maxRecordLen);
-extern void record_stream_free(RecordStream *p_rs);
+extern RecordStream* record_stream_new(int fd, size_t maxRecordLen);
+extern void record_stream_free(RecordStream* p_rs);
 
-extern int record_stream_get_next (RecordStream *p_rs, void ** p_outRecord,
-                                    size_t *p_outRecordLen);
+extern int record_stream_get_next(RecordStream* p_rs, void** p_outRecord,
+    size_t* p_outRecordLen);
 
 #ifdef __cplusplus
 }
 #endif
 
-
 #endif /*_LIBRIL_RECORD_STREAM_H*/
-

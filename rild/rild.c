@@ -18,32 +18,32 @@
 #define LOG_TAG "RILD"
 #define NDEBUG 1
 
+#include <dlfcn.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <dlfcn.h>
 #include <string.h>
-#include <stdint.h>
 #include <unistd.h>
-#include <fcntl.h>
-#include <errno.h>
 
-#include <telephony/ril.h>
 #include <local_socket.h>
-#define LIB_PATH_PROPERTY   "rild.libpath"
-#define LIB_ARGS_PROPERTY   "rild.libargs"
-#define MAX_LIB_ARGS        16
+#include <telephony/ril.h>
+#define LIB_PATH_PROPERTY "rild.libpath"
+#define LIB_ARGS_PROPERTY "rild.libargs"
+#define MAX_LIB_ARGS 16
 
-extern void RIL_register(const RIL_RadioFunctions *callbacks);
+extern void RIL_register(const RIL_RadioFunctions* callbacks);
 
 extern void RIL_startEventLoop(void);
 extern void RIL_onRequestComplete(RIL_Token t, RIL_Errno e,
-        void *response, size_t responselen);
+    void* response, size_t responselen);
 
-extern void RIL_onUnsolicitedResponse(int unsolResponse, const void *data,
-        size_t datalen);
+extern void RIL_onUnsolicitedResponse(int unsolResponse, const void* data,
+    size_t datalen);
 
-extern void RIL_requestTimedCallback (RIL_TimedCallback callback,
-        void *param, const struct timeval *relativeTime);
+extern void RIL_requestTimedCallback(RIL_TimedCallback callback,
+    void* param, const struct timeval* relativeTime);
 
 static struct RIL_Env s_rilEnv = {
     RIL_onRequestComplete,
@@ -51,9 +51,9 @@ static struct RIL_Env s_rilEnv = {
     RIL_requestTimedCallback
 };
 
-int main(int argc, char **argv)
+int main(int argc, char** argv)
 {
-    const RIL_RadioFunctions *funcs;
+    const RIL_RadioFunctions* funcs;
     int ret;
 
     ret = ril_socket_init();

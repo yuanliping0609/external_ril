@@ -44,9 +44,9 @@ typedef enum {
 int getMcc(void);
 int getMnc(void);
 int getMncLength(void);
-void pollSIMState(void *param);
+void pollSIMState(void* param);
 SIM_Status getSIMStatus(void);
-void on_request_sim(int request, void *data, size_t datalen, RIL_Token t);
-bool try_handle_unsol_sim(const char *s);
+void on_request_sim(int request, void* data, size_t datalen, RIL_Token t);
+bool try_handle_unsol_sim(const char* s);
 
 #endif

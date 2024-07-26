@@ -19,42 +19,45 @@
 
 #include <assert.h>
 #include <sys/cdefs.h>
-#include <telephony/librilutils.h>
+
 #include <log/log_radio.h>
-#include "atchannel.h"
-#include "at_tok.h"
-#include "misc.h"
+#include <telephony/librilutils.h>
+
 #include "at_modem.h"
 #include "at_ril.h"
 #include "at_sim.h"
+#include "at_tok.h"
+#include "atchannel.h"
+#include "misc.h"
 
-#define GSM   (RAF_GSM | RAF_GPRS | RAF_EDGE)
-#define CDMA  (RAF_IS95A | RAF_IS95B | RAF_1xRTT)
-#define EVDO  (RAF_EVDO_0 | RAF_EVDO_A | RAF_EVDO_B | RAF_EHRPD)
+#define GSM (RAF_GSM | RAF_GPRS | RAF_EDGE)
+#define CDMA (RAF_IS95A | RAF_IS95B | RAF_1xRTT)
+#define EVDO (RAF_EVDO_0 | RAF_EVDO_A | RAF_EVDO_B | RAF_EHRPD)
 #define WCDMA (RAF_HSUPA | RAF_HSDPA | RAF_HSPA | RAF_HSPAP | RAF_UMTS)
-#define LTE   (RAF_LTE | RAF_LTE_CA)
-#define NR    (RAF_NR)
+#define LTE (RAF_LTE | RAF_LTE_CA)
+#define NR (RAF_NR)
 
-static ModemInfo *sMdmInfo;
+static ModemInfo* sMdmInfo;
 static int s_modem_enabled = 0;
 
-static void requestRadioPower(void *data, size_t datalen, RIL_Token t)
+static void requestRadioPower(void* data, size_t datalen, RIL_Token t)
 {
     int onOff;
 
     int err;
-    ATResponse *p_response = NULL;
+    ATResponse* p_response = NULL;
 
-    assert (datalen >= sizeof(int *));
-    onOff = ((int *)data)[0];
+    assert(datalen >= sizeof(int*));
+    onOff = ((int*)data)[0];
 
     if (onOff == 0 && getRadioState() != RADIO_STATE_OFF) {
         err = at_send_command("AT+CFUN=0", &p_response);
-        if (err < 0 || p_response->success == 0) goto error;
+        if (err < 0 || p_response->success == 0)
+            goto error;
         setRadioState(RADIO_STATE_OFF);
     } else if (onOff > 0 && getRadioState() == RADIO_STATE_OFF) {
         err = at_send_command("AT+CFUN=1", &p_response);
-        if (err < 0|| p_response->success == 0) {
+        if (err < 0 || p_response->success == 0) {
             // Some stacks return an error when there is no SIM,
             // but they really turn the RF portion on
             // So, if we get an error, let's check to see if it
@@ -77,15 +80,15 @@ error:
     RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
 }
 
-static void requestBaseBandVersion(void *data, size_t datalen, RIL_Token t)
+static void requestBaseBandVersion(void* data, size_t datalen, RIL_Token t)
 {
     (void)data;
     (void)datalen;
 
-    ATResponse *p_response = NULL;
+    ATResponse* p_response = NULL;
     int err;
-    char *line;
-    char *responseStr;
+    char* line;
+    char* responseStr;
 
     err = at_send_command_singleline("AT+CGMR", "+CGMR:", &p_response);
     if (err < 0 || !p_response->success) {
@@ -111,19 +114,19 @@ error:
     at_response_free(p_response);
 }
 
-static void requestDeviceIdentity(void *data, size_t datalen, RIL_Token t)
+static void requestDeviceIdentity(void* data, size_t datalen, RIL_Token t)
 {
     (void)data;
     (void)datalen;
 
     int err;
-    char * responseStr[4];
-    ATResponse *p_response = NULL;
+    char* responseStr[4];
+    ATResponse* p_response = NULL;
     int count = 4;
 
     // Fixed values. TODO: Query modem
-    responseStr[0] ="358240051111110";
-    responseStr[1] =  "";
+    responseStr[0] = "358240051111110";
+    responseStr[1] = "";
     responseStr[2] = "77777777";
     responseStr[3] = ""; // default empty for non-CDMA
 
@@ -139,11 +142,11 @@ static void requestDeviceIdentity(void *data, size_t datalen, RIL_Token t)
         }
     }
 
-    RIL_onRequestComplete(t, RIL_E_SUCCESS, responseStr, count*sizeof(char*));
+    RIL_onRequestComplete(t, RIL_E_SUCCESS, responseStr, count * sizeof(char*));
     at_response_free(p_response);
 }
 
-static void unsolicitedRingBackTone(const char *s)
+static void unsolicitedRingBackTone(const char* s)
 {
     char *line, *p;
     int cid, action, type;
@@ -183,11 +186,11 @@ static void unsolicitedRingBackTone(const char *s)
     free(line);
 }
 
-static void requestScreenState(void *data, size_t datalen, RIL_Token t)
+static void requestScreenState(void* data, size_t datalen, RIL_Token t)
 {
     (void)datalen;
 
-    int status = *((int *)data);
+    int status = *((int*)data);
 
     if (!status) {
         /* Suspend */
@@ -195,16 +198,16 @@ static void requestScreenState(void *data, size_t datalen, RIL_Token t)
         at_send_command("AT+CREG=1", NULL);
         at_send_command("AT+CGREG=1", NULL);
     } else {
-       /* Resume */
+        /* Resume */
         at_send_command("AT+CEREG=2", NULL);
         at_send_command("AT+CREG=2", NULL);
         at_send_command("AT+CGREG=2", NULL);
     }
 
-   RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
+    RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
 }
 
-static void requestGetModemStatus(void *data, size_t datalen, RIL_Token t)
+static void requestGetModemStatus(void* data, size_t datalen, RIL_Token t)
 {
     (void)data;
     (void)datalen;
@@ -217,17 +220,16 @@ static void requestGetModemStatus(void *data, size_t datalen, RIL_Token t)
 
 static uint64_t s_last_activity_info_query = 0;
 
-static void requestGetActivityInfo(void *data, size_t datalen, RIL_Token t)
+static void requestGetActivityInfo(void* data, size_t datalen, RIL_Token t)
 {
     (void)data;
     (void)datalen;
 
     uint64_t curTime = ril_nano_time();
-    RIL_ActivityStatsInfo stats =
-    {
+    RIL_ActivityStatsInfo stats = {
         0, // sleep_mode_time_ms
         ((curTime - s_last_activity_info_query) / 1000000) - 1, // idle_mode_time_ms
-        {0, 0, 0, 0, 0}, // tx_mode_time_ms
+        { 0, 0, 0, 0, 0 }, // tx_mode_time_ms
         0 // rx_mode_time_ms
     };
     s_last_activity_info_query = curTime;
@@ -235,51 +237,51 @@ static void requestGetActivityInfo(void *data, size_t datalen, RIL_Token t)
     RIL_onRequestComplete(t, RIL_E_SUCCESS, &stats, sizeof(stats));
 }
 
-static void requestGetIMEI(void *data, size_t datalen, RIL_Token t)
+static void requestGetIMEI(void* data, size_t datalen, RIL_Token t)
 {
     (void)data;
     (void)datalen;
 
-    ATResponse *p_response = NULL;
+    ATResponse* p_response = NULL;
     int err = at_send_command_numeric("AT+CGSN", &p_response);
 
     if (err < 0 || p_response->success == 0) {
         RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
     } else {
         RIL_onRequestComplete(t, RIL_E_SUCCESS,
-            p_response->p_intermediates->line, sizeof(char *));
+            p_response->p_intermediates->line, sizeof(char*));
     }
 
     at_response_free(p_response);
 }
 
-static void requestGetIMEISV(void *data, size_t datalen, RIL_Token t)
+static void requestGetIMEISV(void* data, size_t datalen, RIL_Token t)
 {
     (void)data;
     (void)datalen;
 
-    ATResponse *p_response = NULL;
+    ATResponse* p_response = NULL;
     int err = at_send_command_numeric("AT+CGSN=2", &p_response);
 
     if (err < 0 || p_response->success == 0) {
         RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
     } else {
         RIL_onRequestComplete(t, RIL_E_SUCCESS,
-            p_response->p_intermediates->line, sizeof(char *));
+            p_response->p_intermediates->line, sizeof(char*));
     }
 
     at_response_free(p_response);
 }
 
-static void requestOemHookStrings(void *data, size_t datalen, RIL_Token t)
+static void requestOemHookStrings(void* data, size_t datalen, RIL_Token t)
 {
     int i;
-    const char ** cur;
+    const char** cur;
 
     RLOGD("got OEM_HOOK_STRINGS: 0x%8p %lu", data, (long)datalen);
 
-    for (i = (datalen / sizeof (char *)), cur = (const char **)data;
-        i > 0; cur ++, i --) {
+    for (i = (datalen / sizeof(char*)), cur = (const char**)data;
+         i > 0; cur++, i--) {
         RLOGD("> '%s'", *cur);
     }
 
@@ -287,15 +289,15 @@ static void requestOemHookStrings(void *data, size_t datalen, RIL_Token t)
     RIL_onRequestComplete(t, RIL_E_SUCCESS, data, datalen);
 }
 
-static void requestEnableModem(void *data, size_t datalen, RIL_Token t)
+static void requestEnableModem(void* data, size_t datalen, RIL_Token t)
 {
     (void)data;
     (void)datalen;
 
     int err;
-    ATResponse *p_response = NULL;
+    ATResponse* p_response = NULL;
 
-    s_modem_enabled = *(int *)data;
+    s_modem_enabled = *(int*)data;
     if (s_modem_enabled == 0) {
         err = at_send_command("AT+CFUN=0", &p_response);
         if (err < 0 || p_response->success == 0) {
@@ -311,7 +313,7 @@ static void requestEnableModem(void *data, size_t datalen, RIL_Token t)
     RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
 }
 
-ModemInfo *getModemInfo(void)
+ModemInfo* getModemInfo(void)
 {
     return sMdmInfo;
 }
@@ -330,29 +332,29 @@ int techFromModemType(int mdmtype)
 {
     int ret = -1;
     switch (mdmtype) {
-        case MDM_CDMA:
-            ret = RADIO_TECH_1xRTT;
-            break;
-        case MDM_EVDO:
-            ret = RADIO_TECH_EVDO_A;
-            break;
-        case MDM_GSM:
-            ret = RADIO_TECH_GPRS;
-            break;
-        case MDM_WCDMA:
-            ret = RADIO_TECH_HSPA;
-            break;
-        case MDM_LTE:
-            ret = RADIO_TECH_LTE;
-        case MDM_NR:
-            ret = RADIO_TECH_NR;
-            break;
+    case MDM_CDMA:
+        ret = RADIO_TECH_1xRTT;
+        break;
+    case MDM_EVDO:
+        ret = RADIO_TECH_EVDO_A;
+        break;
+    case MDM_GSM:
+        ret = RADIO_TECH_GPRS;
+        break;
+    case MDM_WCDMA:
+        ret = RADIO_TECH_HSPA;
+        break;
+    case MDM_LTE:
+        ret = RADIO_TECH_LTE;
+    case MDM_NR:
+        ret = RADIO_TECH_NR;
+        break;
     }
 
     return ret;
 }
 
-void setRadioTechnology(ModemInfo *mdm, int newtech)
+void setRadioTechnology(ModemInfo* mdm, int newtech)
 {
     RLOGD("setRadioTechnology(%d)", newtech);
 
@@ -363,7 +365,7 @@ void setRadioTechnology(ModemInfo *mdm, int newtech)
         TECH(mdm) = newtech;
         if (techFromModemType(newtech) != techFromModemType(oldtech)) {
             int tech = techFromModemType(TECH(sMdmInfo));
-            if (tech > 0 ) {
+            if (tech > 0) {
                 RIL_onUnsolicitedResponse(RIL_UNSOL_VOICE_RADIO_TECH_CHANGED,
                     &tech, sizeof(tech));
             }
@@ -380,7 +382,7 @@ void setRadioTechnology(ModemInfo *mdm, int newtech)
  *          1 if the response includes the current technology only
  *          0 if the response includes both current technology and preferred mode
  */
-int parse_technology_response(const char *response, int *current, int32_t *preferred)
+int parse_technology_response(const char* response, int* current, int32_t* preferred)
 {
     int err;
     char *line, *p;
@@ -402,7 +404,8 @@ int parse_technology_response(const char *response, int *current, int32_t *prefe
         return -1;
     }
 
-    if (current) *current = ct;
+    if (current)
+        *current = ct;
     RLOGD("line remaining after int: %s", p);
 
     err = at_tok_nexthexint(&p, &pt);
@@ -434,11 +437,11 @@ int parse_technology_response(const char *response, int *current, int32_t *prefe
  *          1 if only the current mode was returned by modem (or failed to parse preferred)
  *          0 if both current and preferred were returned correctly
  */
-int query_ctec(ModemInfo *mdm, int *current, int32_t *preferred)
+int query_ctec(ModemInfo* mdm, int* current, int32_t* preferred)
 {
     (void)mdm;
 
-    ATResponse *response = NULL;
+    ATResponse* response = NULL;
     int err;
     int res;
 
@@ -450,17 +453,17 @@ int query_ctec(ModemInfo *mdm, int *current, int32_t *preferred)
         return res;
     }
 
-    RLOGE("Error executing command: %d. response: %p. status: %d", err, response, response? response->success : -1);
+    RLOGE("Error executing command: %d. response: %p. status: %d", err, response, response ? response->success : -1);
     at_response_free(response);
     return -1;
 }
 
-/** returns 1 if on, 0 if off, and -1 on error */
+/* returns 1 if on, 0 if off, and -1 on error */
 int isRadioOn(void)
 {
-    ATResponse *p_response = NULL;
+    ATResponse* p_response = NULL;
     int err;
-    char *line;
+    char* line;
     char ret;
 
     err = at_send_command_singleline("AT+CFUN?", "+CFUN:", &p_response);
@@ -473,10 +476,12 @@ int isRadioOn(void)
     line = p_response->p_intermediates->line;
 
     err = at_tok_start(&line);
-    if (err < 0) goto error;
+    if (err < 0)
+        goto error;
 
     err = at_tok_nextbool(&line, &ret);
-    if (err < 0) goto error;
+    if (err < 0)
+        goto error;
 
     at_response_free(p_response);
 
@@ -493,7 +498,7 @@ int isModemEnable(void)
     return s_modem_enabled;
 }
 
-void on_request_modem(int request, void *data, size_t datalen, RIL_Token t)
+void on_request_modem(int request, void* data, size_t datalen, RIL_Token t)
 {
     switch (request) {
     case RIL_REQUEST_RADIO_POWER:
@@ -539,27 +544,25 @@ void on_request_modem(int request, void *data, size_t datalen, RIL_Token t)
     RLOGD("On request modem end");
 }
 
-bool try_handle_unsol_modem(const char *s)
+bool try_handle_unsol_modem(const char* s)
 {
     bool ret = false;
 
     if (strStartsWith(s, "+CTEC: ")) {
         int tech, mask;
-        switch (parse_technology_response(s, &tech, NULL))
-        {
-            case -1: // no argument could be parsed.
-                RLOGE("invalid CTEC line %s\n", s);
-                break;
-            case 1: // current mode correctly parsed
-            case 0: // preferred mode correctly parsed
-                mask = 1 << tech;
-                if (mask != MDM_GSM && mask != MDM_CDMA &&
-                     mask != MDM_WCDMA && mask != MDM_LTE) {
-                    RLOGE("Unknown technology %d\n", tech);
-                } else {
-                    setRadioTechnology(sMdmInfo, tech);
-                }
-                break;
+        switch (parse_technology_response(s, &tech, NULL)) {
+        case -1: // no argument could be parsed.
+            RLOGE("invalid CTEC line %s\n", s);
+            break;
+        case 1: // current mode correctly parsed
+        case 0: // preferred mode correctly parsed
+            mask = 1 << tech;
+            if (mask != MDM_GSM && mask != MDM_CDMA && mask != MDM_WCDMA && mask != MDM_LTE) {
+                RLOGE("Unknown technology %d\n", tech);
+            } else {
+                setRadioTechnology(sMdmInfo, tech);
+            }
+            break;
         }
 
         ret = true;
