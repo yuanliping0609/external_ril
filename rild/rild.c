@@ -15,6 +15,9 @@
 ** limitations under the License.
 */
 
+#define LOG_TAG "RILD"
+#define NDEBUG 1
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <dlfcn.h>
@@ -26,7 +29,6 @@
 
 #include <telephony/ril.h>
 #include <local_socket.h>
-#define LOG_TAG "RILD"
 #define LIB_PATH_PROPERTY   "rild.libpath"
 #define LIB_ARGS_PROPERTY   "rild.libargs"
 #define MAX_LIB_ARGS        16

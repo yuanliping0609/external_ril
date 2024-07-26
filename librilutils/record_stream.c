@@ -15,11 +15,15 @@
 ** limitations under the License.
 */
 
+#define LOG_TAG "RECORD_STREAM"
+#define NDEBUG 1
+
 #include <stdlib.h>
 #include <unistd.h>
 #include <assert.h>
 #include <errno.h>
 #include <telephony/record_stream.h>
+#include <log/log_radio.h>
 #include <string.h>
 #include <stdint.h>
 #if defined(_WIN32)
@@ -144,7 +148,7 @@ int record_stream_get_next (RecordStream *p_rs, void ** p_outRecord,
         && p_rs->read_end == p_rs->buffer_end
     ) {
         // this should never happen
-        //ALOGE("max record length exceeded\n");
+        RLOGE("max record length exceeded\n");
         assert (0);
         errno = EFBIG;
         return -1;

@@ -15,6 +15,9 @@
 ** limitations under the License.
 */
 
+#define LOG_TAG "AT_CHANNEL"
+#define NDEBUG 1
+
 #include "atchannel.h"
 #include "at_tok.h"
 
@@ -28,9 +31,7 @@
 #include <sys/time.h>
 #include <time.h>
 #include <unistd.h>
-#include <telephony/ril_log.h>
-
-#define LOG_TAG "AT"
+#include <log/log_radio.h>
 
 #include "misc.h"
 

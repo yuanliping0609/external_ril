@@ -14,13 +14,16 @@
 ** limitations under the License.
 */
 
+#define LOG_TAG "AT_RIL"
+#define NDEBUG 1
+
 #include <assert.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <pthread.h>
 #include <stdio.h>
 #include <telephony/ril.h>
-#include <telephony/ril_log.h>
+#include <log/log_radio.h>
 #include "atchannel.h"
 #include "at_tok.h"
 #include "misc.h"
@@ -626,14 +629,14 @@ static void onRequest(int request, void *data, size_t datalen, RIL_Token t)
     int req_type = 0;
 
     req_type = request2eventtype(request);
-    RLOGI("onRequest: %d<->%s, reqtype:%d", request, request2string(request), req_type);
+    RLOGI("onRequest: %d, reqtype: %d", request, req_type);
 
     if (req_type < 1) {
         RIL_onRequestComplete(t, RIL_E_REQUEST_NOT_SUPPORTED, NULL, 0);
         return;
     }
 
-    RLOGD("onRequest: %s, RadioState: %d", requestToString(request), getRadioState());
+    RLOGD("onRequest: %d, RadioState: %d", request, getRadioState());
     if (isModemEnable() == 0 && request != RIL_REQUEST_ENABLE_MODEM
         && request != RIL_REQUEST_GET_MODEM_STATUS) {
         RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);

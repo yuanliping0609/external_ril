@@ -15,13 +15,14 @@
 ** limitations under the License.
 */
 
-#define LOG_TAG "RILC"
+#define LOG_TAG "RIL_EVENT"
+#define NDEBUG 1
 
 #include <stdlib.h>
 #include <unistd.h>
 #include <errno.h>
 #include <fcntl.h>
-#include <telephony/ril_log.h>
+#include <log/log_radio.h>
 
 #include <sys/time.h>
 #include <ril_event.h>

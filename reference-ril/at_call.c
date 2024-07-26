@@ -14,10 +14,13 @@
 ** limitations under the License.
 */
 
+#define LOG_TAG "AT_CALL"
+#define NDEBUG 1
+
 #include <assert.h>
 #include <stdio.h>
 #include <sys/cdefs.h>
-#include <telephony/ril_log.h>
+#include <log/log_radio.h>
 #include "atchannel.h"
 #include "at_tok.h"
 #include "misc.h"

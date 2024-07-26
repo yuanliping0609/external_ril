@@ -14,10 +14,13 @@
 ** limitations under the License.
 */
 
+#define LOG_TAG "AT_MODEM"
+#define NDEBUG 1
+
 #include <assert.h>
 #include <sys/cdefs.h>
 #include <telephony/librilutils.h>
-#include <telephony/ril_log.h>
+#include <log/log_radio.h>
 #include "atchannel.h"
 #include "at_tok.h"
 #include "misc.h"
@@ -207,7 +210,7 @@ static void requestGetModemStatus(void *data, size_t datalen, RIL_Token t)
     (void)datalen;
 
     int modemState = s_modem_enabled;
-    syslog(LOG_INFO, "response RIL_REQUEST_GET_MODEM_STATUS, status is [%d]\n", modemState);
+    RLOGI("response RIL_REQUEST_GET_MODEM_STATUS, status is [%d]", modemState);
     RIL_onRequestComplete(t, RIL_E_SUCCESS, &modemState, sizeof(int));
     return;
 }

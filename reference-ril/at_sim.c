@@ -14,9 +14,12 @@
 ** limitations under the License.
 */
 
+#define LOG_TAG "AT_SIM"
+#define NDEBUG 1
+
 #include <stdio.h>
 #include <sys/cdefs.h>
-#include <telephony/ril_log.h>
+#include <log/log_radio.h>
 #include "atchannel.h"
 #include "at_tok.h"
 #include "misc.h"
@@ -246,7 +249,7 @@ static void requestSimCloseChannel(void *data, size_t datalen, RIL_Token t)
     char cmd[32];
 
     if (data == NULL || datalen != sizeof(session_id)) {
-        ALOGE("Invalid data passed to requestSimCloseChannel");
+        RLOGE("Invalid data passed to requestSimCloseChannel");
         RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
         return;
     }
@@ -294,7 +297,7 @@ static void requestSimTransmitApduChannel(void *data,
     err = at_send_command_singleline(cmd, "+CGLA:", &p_response);
     free(cmd);
     if (err < 0 || p_response == NULL || p_response->success == 0) {
-        ALOGE("Error %d transmitting APDU: %d",
+        RLOGE("Error %d transmitting APDU: %d",
             err, p_response ? p_response->success : 0);
         goto error;
     }

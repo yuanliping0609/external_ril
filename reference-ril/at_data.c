@@ -14,6 +14,9 @@
 ** limitations under the License.
 */
 
+#define LOG_TAG "AT_DATA"
+#define NDEBUG 1
+
 #include <alloca.h>
 #include <arpa/inet.h>
 #include <errno.h>
@@ -24,7 +27,7 @@
 #include <sys/cdefs.h>
 #include <sys/ioctl.h>
 #include <sys/socket.h>
-#include <telephony/ril_log.h>
+#include <log/log_radio.h>
 #include "atchannel.h"
 #include "misc.h"
 #include "at_data.h"
@@ -113,7 +116,7 @@ static void set_Ip_Addr(const char *addr, const char *radioInterfaceName)
 
 static void set_Gw_Addr(const char *gw, const char *radioInterfaceName)
 {
-    RLOGD("%s %d setting gateway addr %s on interface %s", __func__, __LINE__, addr,
+    RLOGD("%s %d setting gateway addr %s on interface %s", __func__, __LINE__, gw,
         radioInterfaceName);
     struct ifreq request;
     int sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_IP);

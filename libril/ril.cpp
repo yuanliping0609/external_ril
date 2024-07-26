@@ -15,13 +15,14 @@
 ** limitations under the License.
 */
 
-#define LOG_TAG "RILC"
+#define LOG_TAG "RIL_CPP"
+#define NDEBUG 1
 
 #include <telephony/ril.h>
 #include <telephony/ril_cdma_sms.h>
 #include <telephony/record_stream.h>
 
-#include <telephony/ril_log.h>
+#include <log/log_radio.h>
 #include <pthread.h>
 #include <binder/Parcel.h>
 #include <jstring.h>
@@ -355,7 +356,7 @@ processCommandBuffer(void *buffer, size_t buflen) {
     int32_t request;
     int32_t token;
     RequestInfo *pRI;
-    int ret;
+    int ret __unused;
 
     p.setData((uint8_t *) buffer, buflen);
 
@@ -1227,7 +1228,7 @@ dispatchImsGsmSms(Parcel &p, RequestInfo *pRI, uint8_t retry, int32_t messageRef
 #endif
     return;
 invalid:
-    ALOGE("dispatchImsGsmSms invalid block");
+    RLOGE("dispatchImsGsmSms invalid block");
     invalidCommandBlock(pRI);
     return;
 }
@@ -1262,7 +1263,7 @@ dispatchImsSms(Parcel &p, RequestInfo *pRI) {
     } else if (RADIO_TECH_3GPP2 == format) {
         dispatchImsCdmaSms(p, pRI, retry, messageRef);
     } else {
-        ALOGE("requestImsSendSMS invalid format value =%d", format);
+        RLOGE("requestImsSendSMS invalid format value = %d", format);
     }
 
     return;
@@ -2863,7 +2864,7 @@ static int responseActivityData(Parcel &p, void *response, size_t responselen) {
       RLOGE("invalid response: NULL");
     }
     else {
-      RLOGE("responseActivityData: invalid response length %d expecting len: d%",
+      RLOGE("responseActivityData: invalid response length %d expecting len: %d",
             sizeof(RIL_ActivityStatsInfo), responselen);
     }
     return RIL_ERRNO_INVALID_RESPONSE;
@@ -2904,7 +2905,7 @@ static void processWakeupCallback(int fd, short flags, void *param) {
 }
 
 static void onCommandsSocketClosed(void) {
-    int ret;
+    int ret __unused;
     RequestInfo *p_cur;
 
     /* mark pending requests as "cancelled" so we dont report responses */

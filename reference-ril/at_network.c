@@ -14,12 +14,15 @@
 ** limitations under the License.
 */
 
+#define LOG_TAG "AT_NETWORK"
+#define NDEBUG 1
+
 #include <assert.h>
 #include <limits.h>
 #include <stdio.h>
 #include <sys/cdefs.h>
 #include <telephony/librilutils.h>
-#include <telephony/ril_log.h>
+#include <log/log_radio.h>
 #include "atchannel.h"
 #include "at_tok.h"
 #include "misc.h"
@@ -501,7 +504,7 @@ void requestQueryAvailableNetworks(void *data, size_t datalen, RIL_Token t)
                 strcpy(response[j + 3], "forbidden");
                 break;
             default:
-                RLOGE("<stat> %d is an invalid value: %d", i, value);
+                RLOGE("<stat> %d is an invalid value", i);
                 break;
         }
 

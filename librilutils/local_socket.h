@@ -24,38 +24,14 @@
 #include <sys/types.h>
 #include <telephony/ril.h>
 #include <errno.h>
-#include <telephony/ril_log.h>
+#include <log/log_radio.h>
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-static inline int local_get_control_socket(const char *name)
-{
-    char key[64] = LOCAL_SOCKET_ENV_PREFIX;
-    const char *val = NULL;
-    int fd = 0;
-
-    strlcpy(key + sizeof(LOCAL_SOCKET_ENV_PREFIX) - 1, name,
-        sizeof(key) - sizeof(LOCAL_SOCKET_ENV_PREFIX));
-
-    RLOGD("get env info");
-    val = getenv(key);
-    RLOGD("get env info val is %s", val);
-    if (!val) {
-        return -1;
-    }
-
-    errno = 0;
-    fd = strtol(val,NULL,10);
-    if (errno) {
-        return -1;
-    }
-
-    return fd;
-}
-
 int ril_socket_create(const char *name, int type);
 int ril_socket_init(void);
+int local_get_control_socket(const char *name);
 
 #ifdef __cplusplus
 }

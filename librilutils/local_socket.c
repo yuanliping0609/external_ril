@@ -13,6 +13,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
+#define LOG_TAG "LOCAL_SOCKET"
+#define NDEBUG 1
+
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <errno.h>
@@ -33,6 +37,31 @@
             (unicode)<<=6; (unicode) |= (0x3f & (byte));
 
 #define UNICODE_UPPER_LIMIT 0x10fffd
+
+int local_get_control_socket(const char *name)
+{
+    char key[64] = LOCAL_SOCKET_ENV_PREFIX;
+    const char *val = NULL;
+    int fd = 0;
+
+    strlcpy(key + sizeof(LOCAL_SOCKET_ENV_PREFIX) - 1, name,
+        sizeof(key) - sizeof(LOCAL_SOCKET_ENV_PREFIX));
+
+    RLOGD("get env info");
+    val = getenv(key);
+    RLOGD("get env info val is %s", val);
+    if (!val) {
+        return -1;
+    }
+
+    errno = 0;
+    fd = strtol(val,NULL,10);
+    if (errno) {
+        return -1;
+    }
+
+    return fd;
+}
 
 int ril_socket_create(const char *name, int type)
 {
