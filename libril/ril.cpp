@@ -377,13 +377,21 @@ static int processCommandBuffer(void* buffer, size_t buflen)
             && request <= RIL_CUS_REQUEST_BASE)
         || request >= RIL_CUS_REQUEST_BASE + (int32_t)NUM_ELEMS(s_cus_commands)) {
         Parcel pErr;
-        RLOGD("unsupported request code %ld token %ld", request, token);
+        RLOGE("unsupported request code %ld token %ld", request, token);
         // FIXME this should perhaps return a response
-        pErr.writeInt32(RESPONSE_SOLICITED);
-        pErr.writeInt32(token);
-        pErr.writeInt32(RIL_E_GENERIC_FAILURE);
+        status = pErr.writeInt32(RESPONSE_SOLICITED);
+        status = pErr.writeInt32(token);
+        status = pErr.writeInt32(RIL_E_GENERIC_FAILURE);
 
-        sendResponse(pErr);
+        if (status != NO_ERROR) {
+            RLOGE("failed to construct error response parcel");
+            return 0;
+        }
+
+        if (sendResponse(pErr) < 0) {
+            RLOGE("failed to send error response parcel");
+        }
+
         return 0;
     }
 
@@ -762,9 +770,7 @@ static void dispatchSIM_IO(Parcel& p, RequestInfo* pRI)
     int size;
     status_t status;
 
-#if VDBG
     RLOGD("dispatchSIM_IO");
-#endif
     memset(&simIO, 0, sizeof(simIO));
 
     // note we only check status at the end
@@ -842,9 +848,7 @@ static void dispatchSIM_APDU(Parcel& p, RequestInfo* pRI)
     status_t status;
     RIL_SIM_APDU apdu;
 
-#if VDBG
     RLOGD("dispatchSIM_APDU");
-#endif
     memset(&apdu, 0, sizeof(RIL_SIM_APDU));
 
     // Note we only check status at the end. Any single failure leads to
@@ -976,6 +980,7 @@ static void dispatchRaw(Parcel& p, RequestInfo* pRI)
     status_t status;
     const void* data;
 
+    RLOGD("dispatchRaw");
     status = p.readInt32(&len);
 
     if (status != NO_ERROR) {
@@ -1825,14 +1830,14 @@ static int blockingWrite(int fd, const void* buffer, size_t len)
         if (written >= 0) {
             writeOffset += written;
         } else { // written < 0
-            RLOGE("RIL Response: unexpected error on write errno:%d", errno);
+            RLOGE("RIL Response: unexpected error on write errno: %d", errno);
             close(fd);
             return -1;
         }
     }
-#if VDBG
-    RLOGE("RIL Response bytes written:%d", writeOffset);
-#endif
+
+    RLOGI("RIL Response bytes written: %zu", writeOffset);
+
     return 0;
 }
 
@@ -1842,11 +1847,8 @@ static int sendResponseRaw(const void* data, size_t dataSize)
     int ret;
     uint32_t header;
 
-#if VDBG
-    RLOGE("Send Response to %s", rilSocketIdToString(socket_id));
-#endif
-
     if (s_fdCommand < 0) {
+        RLOGE("RIL: no valid fd for URC channel");
         return -1;
     }
 
@@ -2968,7 +2970,7 @@ static void processCommandsCallback(int fd, short flags, void* param)
     if (ret == 0 || !(errno == EAGAIN || errno == EINTR)) {
         /* fatal error or end-of-stream */
         if (ret != 0) {
-            RLOGE("error on reading command socket errno:%d\n", errno);
+            RLOGE("error on reading command socket errno: %d\n", errno);
         } else {
             RLOGW("EOS.  Closing command socket.");
         }
@@ -3021,7 +3023,7 @@ static void listenCallback(int fd, short flags, void* param)
     s_fdCommand = accept(s_fdListen, (struct sockaddr*)&peeraddr, &socklen);
 
     if (s_fdCommand < 0) {
-        RLOGE("Error on accept() errno:%d", errno);
+        RLOGE("Error on accept() errno: %d", errno);
         /* start listening for new connections again */
         rilEventAddWakeup(&s_listen_event);
         return;
@@ -3037,7 +3039,7 @@ static void listenCallback(int fd, short flags, void* param)
         RLOGE("Error setting O_NONBLOCK errno: %d", errno);
     }
 
-    RLOGD("new client connect");
+    RLOGI("new client connect");
     p_rs = record_stream_new(s_fdCommand, MAX_COMMAND_BYTES);
 
     ril_event_set(&s_commands_event, s_fdCommand, 1,
@@ -3067,7 +3069,7 @@ static void userTimerCallback(int fd, short flags, void* param)
 static void eventLoop(void* param)
 {
     ril_event_loop();
-    RLOGE("error in event_loop_base errno:%d", errno);
+    RLOGE("error in event_loop_base errno: %d", errno);
     // kill self to restart on error
     kill(0, SIGKILL);
     return;
@@ -3133,7 +3135,7 @@ extern "C" void RIL_register(const RIL_RadioFunctions* callbacks)
         return;
     }
 
-    RLOGE("RIL_register: RIL version %d", callbacks->version);
+    RLOGI("RIL_register: RIL version %d", callbacks->version);
 
     if (s_registerCalled > 0) {
         RLOGE("RIL_register has been called more than once. "
@@ -3146,8 +3148,8 @@ extern "C" void RIL_register(const RIL_RadioFunctions* callbacks)
     s_registerCalled = 1;
 
     RLOGI("s_registerCalled flag set, %d", s_started);
-    // Little self-check
 
+    // Little self-check
     for (int i = 0; i < (int)NUM_ELEMS(s_commands); i++) {
         assert(i == s_commands[i].requestNumber);
     }
@@ -3169,8 +3171,9 @@ extern "C" void RIL_register(const RIL_RadioFunctions* callbacks)
         assert(i + RIL_UNSOL_RESPONSE_BASE
             == s_unsolResponses[i].requestNumber);
     }
+
     // start listen socket
-    RLOGD("RIL_register s_starte %d", s_started);
+    RLOGI("RIL_register s_starte %d", s_started);
 
     if (s_started == 0) {
         RIL_startEventLoop();
@@ -3216,9 +3219,7 @@ extern "C" void RIL_onRequestComplete(RIL_Token t, RIL_Errno e, void* response,
         return;
     }
 
-#if VDBG
-    RLOGD("RequestComplete, %s", rilSocketIdToString(socket_id));
-#endif
+    RLOGD("RequestComplete");
 
     if (pRI->local > 0) {
         // Locally issued command...void only!
@@ -3241,7 +3242,7 @@ extern "C" void RIL_onRequestComplete(RIL_Token t, RIL_Errno e, void* response,
 
             /* if an error occurred, rewind and mark it */
             if (ret != 0) {
-                RLOGE("responseFunction error, ret %d", ret);
+                RLOGE("responseFunction error, ret: %d", ret);
                 p.setDataPosition(errorOffset);
                 p.writeInt32(ret);
             }
@@ -3255,7 +3256,9 @@ extern "C" void RIL_onRequestComplete(RIL_Token t, RIL_Errno e, void* response,
             RLOGD("RIL onRequestComplete: Command channel closed");
         }
 
-        sendResponse(p);
+        if (sendResponse(p) < 0) {
+            RLOGE("failed to send solicited command response");
+        }
     }
 
 done:

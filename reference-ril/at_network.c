@@ -248,6 +248,7 @@ static void requestSetPreferredNetworkType(void* data, size_t datalen, RIL_Token
         free(cmd);
 
         if (err || !p_response->success) {
+            RLOGE("Failure occurred in sending %s due to: %s", cmd, at_io_err_str(err));
             RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
             return;
         }
@@ -335,14 +336,15 @@ static void requestImsRegStateChange(void* data, size_t datalen, RIL_Token t)
 
     asprintf(&cmd, "AT+CAVIMS=%d", is_on);
     err = at_send_command(cmd, &p_response);
-    free(cmd);
 
     if (err < 0 || p_response->success == 0) {
+        RLOGE("Failure occurred in sending %s due to: %s", cmd, at_io_err_str(err));
         RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
     } else {
         RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
     }
 
+    free(cmd);
     at_response_free(p_response);
 }
 
@@ -384,15 +386,16 @@ static void requestImsSetServiceStatus(void* data, size_t datalen, RIL_Token t)
 
     asprintf(&cmd, "AT+CASIMS=%d", ims_service);
     err = at_send_command(cmd, &p_response);
-    free(cmd);
 
     if (err < 0 || p_response->success == 0) {
+        RLOGE("Failure occurred in sending %s due to: %s", cmd, at_io_err_str(err));
         RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
     } else {
         RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
     }
 
     at_response_free(p_response);
+    free(cmd);
 }
 
 static void requestSetNetworlSelectionManual(void* data, size_t datalen, RIL_Token t)
@@ -409,6 +412,7 @@ static void requestSetNetworlSelectionManual(void* data, size_t datalen, RIL_Tok
 
     err = at_send_command(cmd, &p_response);
     if (err < 0 || p_response->success == 0) {
+        RLOGE("Failure occurred in sending %s due to: %s", cmd, at_io_err_str(err));
         goto error;
     }
 
@@ -446,6 +450,7 @@ void requestQueryAvailableNetworks(void* data, size_t datalen, RIL_Token t)
 
     err = at_send_command_singleline("AT+COPS=?", "+COPS:", &p_response);
     if (err < 0 || !p_response || !p_response->success || !p_response->p_intermediates) {
+        RLOGE("Failure occurred in sending %s due to: %s", "AT+COPS=?", at_io_err_str(err));
         RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
         at_response_free(p_response);
         return;
@@ -466,6 +471,7 @@ void requestQueryAvailableNetworks(void* data, size_t datalen, RIL_Token t)
 
     response = (char**)calloc(1, sizeof(char*) * nplmns * 4);
     if (!response) {
+        RLOGE("Memory allocation failed in requestQueryAvailableNetworks");
         RIL_onRequestComplete(t, RIL_E_NO_MEMORY, NULL, 0);
         at_response_free(p_response);
         return;
@@ -473,6 +479,7 @@ void requestQueryAvailableNetworks(void* data, size_t datalen, RIL_Token t)
 
     item = (char*)calloc(1, nplmns * sizeof(char) * 4 * MAX_OPER_NAME_LENGTH);
     if (!item) {
+        RLOGE("Memory allocation failed in requestQueryAvailableNetworks");
         RIL_onRequestComplete(t, RIL_E_NO_MEMORY, NULL, 0);
         free(response);
         at_response_free(p_response);
@@ -556,6 +563,7 @@ void requestQueryAvailableNetworks(void* data, size_t datalen, RIL_Token t)
 
     response_valid = (char**)calloc(1, sizeof(char*) * nplmns_valid * 4);
     if (!response_valid) {
+        RLOGE("Memory allocation failed in requestQueryAvailableNetworks");
         RIL_onRequestComplete(t, RIL_E_NO_MEMORY, NULL, 0);
         free(response);
         free(item);
@@ -640,6 +648,7 @@ static void requestImsRegState(void* data, size_t datalen, RIL_Token t)
 
     err = at_send_command_singleline("AT+CIREG?", "+CIREG:", &p_response);
     if (err < 0 || !p_response->success) {
+        RLOGE("Failure occurred in sending %s due to: %s", "AT+CIREG?", at_io_err_str(err));
         goto error;
     }
 
@@ -659,6 +668,7 @@ static void requestImsRegState(void* data, size_t datalen, RIL_Token t)
 
     err = at_send_command_singleline("AT+CNUM", "+CNUM:", &p_response);
     if (err < 0 || !p_response->success) {
+        RLOGE("Failure occurred in sending %s due to: %s", "AT+CNUM", at_io_err_str(err));
         goto error;
     }
 
@@ -702,8 +712,10 @@ static void requestVoiceRegistrationState(void* data, size_t datalen, RIL_Token 
 
     err = at_send_command_singleline(cmd, prefix, &p_response);
 
-    if (err < 0 || !p_response->success)
+    if (err < 0 || !p_response->success) {
+        RLOGE("Failure occurred in sending %s due to: %s", cmd, at_io_err_str(err));
         goto error;
+    }
 
     line = p_response->p_intermediates->line;
 
@@ -821,6 +833,7 @@ static void requestSetNetowkAutoMode(void* data, size_t datalen, RIL_Token t)
     ATResponse* p_response = NULL;
     int err = at_send_command("AT+COPS=0", &p_response);
     if (err < 0 || p_response->success == 0) {
+        RLOGE("Failure occurred in sending %s due to: %s", "AT+COPS=0", at_io_err_str(err));
         RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
     } else {
         RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
@@ -1162,10 +1175,14 @@ bool try_handle_unsol_net(const char* s)
     char *line = NULL, *p;
     int err;
 
+    RLOGD("unsol network string: %s", s);
+
     if (strStartsWith(s, "%CTZV:")) {
+        RLOGI("Receive NITZ URC");
         on_nitz_unsol_resp(s);
         ret = true;
     } else if (strStartsWith(s, "+CREG:") || strStartsWith(s, "+CGREG:")) {
+        RLOGI("Receive EPS network state change URC");
         RIL_onUnsolicitedResponse(
             RIL_UNSOL_RESPONSE_VOICE_NETWORK_STATE_CHANGED, NULL, 0);
 #ifdef WORKAROUND_FAKE_CGEV
@@ -1175,6 +1192,7 @@ bool try_handle_unsol_net(const char* s)
     }
 #define CGFPCCFG "%CGFPCCFG:"
     else if (strStartsWith(s, CGFPCCFG)) {
+        RLOGI("Receive physical channel configs URC");
         /* cuttlefish/goldfish specific */
         line = p = strdup(s);
         RLOGD("got CGFPCCFG line %s and %s\n", s, p);
@@ -1202,6 +1220,7 @@ bool try_handle_unsol_net(const char* s)
         free(p);
         ret = true;
     } else if (strStartsWith(s, "+WPRL: ")) {
+        RLOGI("Receive WPRL URC");
         int version = -1;
         line = p = strdup(s);
         if (!line) {
@@ -1225,8 +1244,11 @@ bool try_handle_unsol_net(const char* s)
         RIL_onUnsolicitedResponse(RIL_UNSOL_CDMA_PRL_CHANGED, &version, sizeof(version));
         ret = true;
     } else if (strStartsWith(s, "+CSQ: ")) {
+        RLOGI("Receive signal strength URC");
         on_signal_strength_unsol_resp(s);
         ret = true;
+    } else {
+        RLOGI("Can't match any unsol network handlers");
     }
 
     return ret;

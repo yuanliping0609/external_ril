@@ -433,6 +433,7 @@ SIM_Status getSIMStatus(void)
     err = at_send_command_singleline("AT+CPIN?", "+CPIN:", &p_response);
 
     if (err != 0) {
+        RLOGE("Failure occurred in sending %s due to: %s", "AT+CPIN?", at_io_err_str(err));
         ret = SIM_NOT_READY;
         goto done;
     }
@@ -517,6 +518,7 @@ void pollSIMState(void* param)
         return;
 
     case SIM_NOT_READY:
+        RLOGI("SIM_NOT_READY");
         RIL_requestTimedCallback(pollSIMState, NULL, &TIMEVAL_SIMPOLL);
         return;
 
@@ -550,6 +552,7 @@ static void getIccId(char* iccid, int size)
     }
     err = at_send_command_numeric("AT+CICCID", &p_response);
     if (err < 0 || p_response->success == 0) {
+        RLOGE("Failure occurred in sending %s due to: %s", "AT+CICCID", at_io_err_str(err));
         goto error;
     }
 
@@ -695,6 +698,7 @@ static void requestStksendTerminalResponse(void* data, size_t datalen, RIL_Token
     snprintf(cmd, sizeof(cmd), "AT+CUSATT=\"%s\"", (char*)data);
     err = at_send_command_singleline(cmd, "+CUSATT:", &p_response);
     if (err < 0 || p_response->success == 0) {
+        RLOGE("Failure occurred in sending %s due to: %s", cmd, at_io_err_str(err));
         RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
     } else {
         RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
@@ -720,6 +724,7 @@ static void requestStkSendEnvelope(void* data, size_t datalen, RIL_Token t)
     snprintf(cmd, sizeof(cmd), "AT+CUSATE=\"%s\"", (char*)data);
     err = at_send_command_singleline(cmd, "+CUSATE:", &p_response);
     if (err < 0 || p_response->success == 0) {
+        RLOGE("Failure occurred in sending %s due to: %s", cmd, at_io_err_str(err));
         RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
     } else {
         RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
@@ -767,6 +772,7 @@ static void requestStkServiceIsRunning(void* data, size_t datalen, RIL_Token t)
     err = at_send_command_singleline("AT+CUSATD?", "+CUSATD:", &p_response);
 
     if (err < 0 || p_response->success == 0) {
+        RLOGE("Failure occurred in sending %s due to: %s", "AT+CUSATD?", at_io_err_str(err));
         RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
     } else {
         RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
@@ -787,6 +793,7 @@ static int getSimlockRemainTimes(const char* type)
     snprintf(cmd, sizeof(cmd), "AT+CPINR=\"%s\"", type);
     err = at_send_command_multiline(cmd, "+CPINR:", &p_response);
     if (err < 0 || p_response->success == 0) {
+        RLOGE("Failure occurred in sending %s due to: %s", cmd, at_io_err_str(err));
         goto error;
     }
 
@@ -844,6 +851,7 @@ static void requestFacilityLock(int request, char** data,
     if (*data[1] == '2') { // query status
         err = at_send_command_multiline(cmd, "+CLCK: ", &p_response);
         if (err < 0 || p_response->success == 0) {
+            RLOGE("Failure occurred in sending %s due to: %s", cmd, at_io_err_str(err));
             goto error;
         }
         line = p_response->p_intermediates->line;
@@ -862,6 +870,7 @@ static void requestFacilityLock(int request, char** data,
     } else { // unlock/lock this facility
         err = at_send_command(cmd, &p_response);
         if (err < 0 || p_response->success == 0) {
+            RLOGE("Failure occurred in sending %s due to: %s", cmd, at_io_err_str(err));
             errnoType = RIL_E_PASSWORD_INCORRECT;
             goto error;
         }
@@ -895,6 +904,7 @@ static void requestSetSuppServiceNotifications(void* data, size_t datalen,
     snprintf(cmd, sizeof(cmd), "AT+CSSN=%d,%d", mode, mode);
     err = at_send_command(cmd, &p_response);
     if (err < 0 || p_response->success == 0) {
+        RLOGE("Failure occurred in sending %s due to: %s", cmd, at_io_err_str(err));
         RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
     } else {
         RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
@@ -915,6 +925,7 @@ static void requestSendUSSD(void* data, size_t datalen, RIL_Token t)
     snprintf(cmd, sizeof(cmd), "AT+CUSD=1,\"%s\"", ussdRequest);
     err = at_send_command(cmd, &p_response);
     if (err < 0 || p_response->success == 0) {
+        RLOGE("Failure occurred in sending %s due to: %s", cmd, at_io_err_str(err));
         RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
     } else {
         RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
@@ -939,6 +950,7 @@ static void requestChangeSimPin2(void* data, size_t datalen, RIL_Token t)
         strings[1]);
     err = at_send_command(cmd, &p_response);
     if (err < 0 || p_response->success == 0) {
+        RLOGE("Failure occurred in sending %s due to: %s", cmd, at_io_err_str(err));
         remaintime = getSimlockRemainTimes("SIM PIN2");
         goto error;
     }
@@ -956,7 +968,7 @@ error:
 static void requestChangeSimPin(int request, void* data, size_t datalen, RIL_Token t)
 {
     ATResponse* p_response = NULL;
-    int err;
+    int err = AT_ERROR_GENERIC;
     int remaintimes = -1;
     char* cmd = NULL;
     const char** strings = (const char**)data;
@@ -972,6 +984,7 @@ static void requestChangeSimPin(int request, void* data, size_t datalen, RIL_Tok
 
     if (err < 0 || p_response->success == 0) {
     error:
+        RLOGE("Failure occurred in sending %s due to: %s", cmd, at_io_err_str(err));
         if (request == RIL_REQUEST_CHANGE_SIM_PIN) {
             remaintimes = getSimlockRemainTimes("SIM PIN");
         } else if (request == RIL_REQUEST_ENTER_SIM_PUK) {
@@ -992,7 +1005,7 @@ static void requestChangeSimPin(int request, void* data, size_t datalen, RIL_Tok
 static void requestEnterSimPin(int request, void* data, size_t datalen, RIL_Token t)
 {
     ATResponse* p_response = NULL;
-    int err;
+    int err = AT_ERROR_GENERIC;
     int remaintimes = -1;
     char* cmd = NULL;
     const char** strings = (const char**)data;
@@ -1008,6 +1021,7 @@ static void requestEnterSimPin(int request, void* data, size_t datalen, RIL_Toke
 
     if (err < 0 || p_response->success == 0) {
     error:
+        RLOGE("Failure occurred in sending %s due to: %s", cmd, at_io_err_str(err));
         if (request == RIL_REQUEST_ENTER_SIM_PIN) {
             remaintimes = getSimlockRemainTimes("SIM PIN");
         } else if (request == RIL_REQUEST_ENTER_SIM_PIN2) {
@@ -1052,6 +1066,7 @@ static void requestSIM_IO(void* data, size_t datalen, RIL_Token t)
 
     err = at_send_command_singleline(cmd, "+CRSM:", &p_response);
     if (err < 0 || p_response->success == 0) {
+        RLOGE("Failure occurred in sending %s due to: %s", cmd, at_io_err_str(err));
         goto error;
     }
 
@@ -1112,6 +1127,7 @@ static void requestGetIMSI(void* data, size_t datalen, RIL_Token t)
     int err = at_send_command_numeric("AT+CIMI", &p_response);
 
     if (err < 0 || p_response->success == 0) {
+        RLOGE("Failure occurred in sending %s due to: %s", "AT+CIMI", at_io_err_str(err));
         RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
     } else {
         RIL_onRequestComplete(t, RIL_E_SUCCESS,
@@ -1127,6 +1143,7 @@ static void requestCancelUSSD(void* data, size_t datalen, RIL_Token t)
     int err = at_send_command_numeric("AT+CUSD=2", &p_response);
 
     if (err < 0 || p_response->success == 0) {
+        RLOGE("Failure occurred in sending %s due to: %s", "AT+CUSD=2", at_io_err_str(err));
         RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
     } else {
         RIL_onRequestComplete(t, RIL_E_SUCCESS,
@@ -1310,12 +1327,12 @@ void on_request_sim(int request, void* data, size_t datalen, RIL_Token t)
         requestQueryUICCApplication(data, datalen, t);
         break;
     default:
-        RLOGD("Request not supported");
+        RLOGI("Request not supported");
         RIL_onRequestComplete(t, RIL_E_REQUEST_NOT_SUPPORTED, NULL, 0);
         break;
     }
 
-    RLOGD("On request sim end\n");
+    RLOGI("On request sim end\n");
 }
 
 bool try_handle_unsol_sim(const char* s)
@@ -1323,7 +1340,10 @@ bool try_handle_unsol_sim(const char* s)
     bool ret = false;
     char *line = NULL, *p;
 
+    RLOGD("unsol sim string: %s", s);
+
     if (strStartsWith(s, "+CCSS: ")) {
+        RLOGI("Receive cdma subscription source changed URC");
         int source = 0;
         line = p = strdup(s);
         if (!line) {
@@ -1349,9 +1369,11 @@ bool try_handle_unsol_sim(const char* s)
 
         ret = true;
     } else if (strStartsWith(s, "+CUSATEND")) { // session end
+        RLOGI("Receive STK session end URC");
         RIL_onUnsolicitedResponse(RIL_UNSOL_STK_SESSION_END, NULL, 0);
         ret = true;
     } else if (strStartsWith(s, "+CUSATP:")) {
+        RLOGI("Receive +CUSATP URC");
         line = p = strdup(s);
         if (!line) {
             RLOGE("+CUSATP: Unable to allocate memory");
@@ -1382,6 +1404,8 @@ bool try_handle_unsol_sim(const char* s)
 
         free(line);
         ret = true;
+    } else {
+        RLOGI("Can't match any unsol sim handlers");
     }
 
     return ret;

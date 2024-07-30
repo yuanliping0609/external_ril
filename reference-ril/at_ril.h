@@ -22,6 +22,7 @@
 
 int isConnectionClosed(void);
 const struct RIL_Env* getRilEnv(void);
+const char* requestToString(int request);
 
 #define RIL_onRequestComplete(t, e, response, responselen) getRilEnv()->OnRequestComplete(t, e, response, responselen)
 #define RIL_onUnsolicitedResponse(a, b, c) getRilEnv()->OnUnsolicitedResponse(a, b, c)

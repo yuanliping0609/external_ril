@@ -151,7 +151,7 @@ static int callFromCLCCLine(char* line, RIL_Call* p_call)
     return 0;
 
 error:
-    RLOGE("invalid CLCC line\n");
+    RLOGE("invalid CLCC line");
     return -1;
 }
 
@@ -270,6 +270,7 @@ static void requestGetCurrentCalls(void* data, size_t datalen, RIL_Token t)
     err = at_send_command_multiline("AT+CLCC", "+CLCC:", &p_response);
 
     if (err != 0 || p_response->success == 0) {
+        RLOGE("Fail to send AT+CLCC due to: %s", at_io_err_str(err));
         RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
         return;
     }
@@ -294,6 +295,7 @@ static void requestGetCurrentCalls(void* data, size_t datalen, RIL_Token t)
         err = callFromCLCCLine(p_cur->line, p_calls + countValidCalls);
 
         if (err != 0) {
+            RLOGE("Failed to parse the CLCC line");
             continue;
         }
 
@@ -509,8 +511,10 @@ static void requestEccDial(void* data, size_t datalen, RIL_Token t)
     }
 
     err = at_send_command(cmd, NULL);
-    if (err != 0)
+    if (err != 0) {
+        RLOGE("Failure occurred in sending %s due to: %s", cmd, at_io_err_str(err));
         goto error;
+    }
 
     RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
     return;
@@ -573,6 +577,7 @@ static void requestChangeBarringPassword(char** data, size_t datalen, RIL_Token 
 
     err = at_send_command(cmd, &p_response);
     if (err < 0 || p_response->success == 0) {
+        RLOGE("Failure occurred in sending %s due to: %s", cmd, at_io_err_str(err));
         goto error;
     }
 
@@ -603,6 +608,7 @@ static void requestSetCallWaiting(void* data, size_t datalen, RIL_Token t)
 
     err = at_send_command(cmd, &p_response);
     if (err < 0 || p_response->success == 0) {
+        RLOGE("Failure occurred in sending %s due to: %s", cmd, at_io_err_str(err));
         RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
     } else {
         RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
@@ -631,6 +637,7 @@ static void requestQueryCallWaiting(void* data, size_t datalen, RIL_Token t)
 
     err = at_send_command_multiline(cmd, "+CCWA:", &p_response);
     if (err < 0 || p_response->success == 0) {
+        RLOGE("Failure occurred in sending %s due to: %s", cmd, at_io_err_str(err));
         goto error;
     }
 
@@ -735,6 +742,7 @@ static void requestQueryCallForward(RIL_CallForwardInfo* data,
 
     err = at_send_command_multiline(cmd, "+CCFCU:", &p_response);
     if (err < 0 || p_response->success == 0) {
+        RLOGE("Failure occurred in sending %s due to: %s", cmd, at_io_err_str(err));
         goto error;
     }
 
@@ -811,6 +819,7 @@ static void requestSetCallForward(RIL_CallForwardInfo* data,
 
     err = at_send_command_multiline(cmd, "+CCFCU:", &p_response);
     if (err < 0 || p_response->success == 0) {
+        RLOGE("Failure occurred in sending %s due to: %s", cmd, at_io_err_str(err));
         goto error;
     }
 
@@ -835,6 +844,7 @@ static void requestSetClir(void* data, size_t datalen, RIL_Token t)
     snprintf(cmd, sizeof(cmd), "AT+CLIR=%d", n);
     err = at_send_command(cmd, &p_response);
     if (err < 0 || p_response->success == 0) {
+        RLOGE("Failure occurred in sending %s due to: %s", cmd, at_io_err_str(err));
         RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
     } else {
         RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
@@ -860,6 +870,7 @@ static void requestQueryClir(void* data, size_t datalen, RIL_Token t)
 
     err = at_send_command_singleline("AT+CLIR?", "+CLIR:", &p_response);
     if (err < 0 || p_response->success == 0) {
+        RLOGE("Failure occurred in sending %s due to: %s", "AT+CLIR?", at_io_err_str(err));
         goto error;
     }
 
@@ -903,6 +914,7 @@ static void requestQueryClip(void* data, size_t datalen, RIL_Token t)
 
     err = at_send_command_singleline("AT+CLIP?", "+CLIP:", &p_response);
     if (err < 0 || p_response->success == 0) {
+        RLOGE("Failure occurred in sending %s due to: %s", "AT+CLIP?", at_io_err_str(err));
         goto error;
     }
 
@@ -940,6 +952,7 @@ static void requestGetMute(void* data, size_t datalen, RIL_Token t)
 
     err = at_send_command_singleline("AT+CMUT?", "+CMUT:", &p_response);
     if (err < 0 || p_response->success) {
+        RLOGE("Failure occurred in sending %s due to: %s", "AT+CMUT?", at_io_err_str(err));
         goto done;
     }
 
@@ -967,6 +980,7 @@ static void requestSetMute(void* data, size_t datalen, RIL_Token t)
     err = at_send_command(cmd, &p_response);
 
     if (err < 0 || p_response->success) {
+        RLOGE("Failure occurred in sending %s due to: %s", cmd, at_io_err_str(err));
         RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
     } else {
         RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
@@ -986,6 +1000,7 @@ static void requestExitEmergencyMode(void* data, size_t datalen, RIL_Token t)
     err = at_send_command("AT+WSOS=0", &p_response);
 
     if (err < 0 || p_response->success == 0) {
+        RLOGE("Failure occurred in sending %s due to: %s", "AT+WSOS=0", at_io_err_str(err));
         RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
         return;
     }
@@ -1151,11 +1166,14 @@ bool try_handle_unsol_call(const char* s)
     bool ret = false;
     char *line = NULL, *p;
 
+    RLOGD("unsol call string: %s", s);
+
     if (strStartsWith(s, "+CRING:")
         || strStartsWith(s, "RING")
         || strStartsWith(s, "NO CARRIER")
         || strStartsWith(s, "+CCWA")
         || strStartsWith(s, "ALERTING")) {
+        RLOGI("Receive call state changed URC");
         RIL_onUnsolicitedResponse(RIL_UNSOL_RESPONSE_CALL_STATE_CHANGED, NULL, 0);
 #ifdef WORKAROUND_FAKE_CGEV
         RIL_requestTimedCallback(onDataCallListChanged, NULL, NULL); // TODO use new function
@@ -1163,12 +1181,15 @@ bool try_handle_unsol_call(const char* s)
 
         ret = true;
     } else if (strStartsWith(s, "HOLD")) {
+        RLOGI("Receive supplementary service URC(Remote HOLD)");
         unsolicitedSuppSvcNotification(1, 2, 0, 0, NULL);
         ret = true;
     } else if (strStartsWith(s, "UNHOLD")) {
+        RLOGI("Receive supplementary service URC(Remote UNHOLD)");
         unsolicitedSuppSvcNotification(1, 3, 0, 0, NULL);
         ret = true;
     } else if (strStartsWith(s, "+WSOS: ")) {
+        RLOGI("Receive emergency mode changed URC");
         char state = 0;
         int unsol;
         line = p = strdup(s);
@@ -1177,6 +1198,7 @@ bool try_handle_unsol_call(const char* s)
             return true;
         }
         if (at_tok_start(&p) < 0) {
+            RLOGE("invalid response string");
             free(line);
             return true;
         }
@@ -1191,6 +1213,8 @@ bool try_handle_unsol_call(const char* s)
 
         RIL_onUnsolicitedResponse(unsol, NULL, 0);
         ret = true;
+    } else {
+        RLOGI("Can't match any unsol call handlers");
     }
 
     return ret;

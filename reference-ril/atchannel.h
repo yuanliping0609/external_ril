@@ -33,6 +33,7 @@ extern void AT_DUMP(const char* prefix, const char* buff, int len);
     } while (0)
 #endif
 
+#define AT_ERROR_OK (0)
 #define AT_ERROR_GENERIC (-1)
 #define AT_ERROR_COMMAND_PENDING (-2)
 #define AT_ERROR_CHANNEL_CLOSED (-3)
@@ -115,6 +116,40 @@ typedef enum {
 } AT_CME_Error;
 
 AT_CME_Error at_get_cme_error(const ATResponse* p_response);
+
+static inline const char* at_io_err_str(int e)
+{
+    const char* str;
+
+    switch (e) {
+    case AT_ERROR_OK:
+        str = "AT_ERROR_OK";
+        break;
+    case AT_ERROR_GENERIC:
+        str = "AT_ERROR_GENERIC";
+        break;
+    case AT_ERROR_COMMAND_PENDING:
+        str = "AT_ERROR_COMMAND_PENDING";
+        break;
+    case AT_ERROR_CHANNEL_CLOSED:
+        str = "AT_ERROR_CHANNEL_CLOSED";
+        break;
+    case AT_ERROR_TIMEOUT:
+        str = "AT_ERROR_TIMEOUT";
+        break;
+    case AT_ERROR_INVALID_THREAD:
+        str = "AT_ERROR_INVALID_THREAD";
+        break;
+    case AT_ERROR_INVALID_RESPONSE:
+        str = "AT_ERROR_INVALID_RESPONSE";
+        break;
+    default:
+        str = "AT_ERROR_UNKNOWN";
+        break;
+    }
+
+    return str;
+}
 
 #ifdef __cplusplus
 }

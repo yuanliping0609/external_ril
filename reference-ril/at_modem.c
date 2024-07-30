@@ -52,12 +52,15 @@ static void requestRadioPower(void* data, size_t datalen, RIL_Token t)
 
     if (onOff == 0 && getRadioState() != RADIO_STATE_OFF) {
         err = at_send_command("AT+CFUN=0", &p_response);
-        if (err < 0 || p_response->success == 0)
+        if (err < 0 || p_response->success == 0) {
+            RLOGE("Failure occurred in sending %s due to: %s", "AT+CFUN=0", at_io_err_str(err));
             goto error;
+        }
         setRadioState(RADIO_STATE_OFF);
     } else if (onOff > 0 && getRadioState() == RADIO_STATE_OFF) {
         err = at_send_command("AT+CFUN=1", &p_response);
         if (err < 0 || p_response->success == 0) {
+            RLOGE("Failure occurred in sending %s due to: %s", "AT+CFUN=1", at_io_err_str(err));
             // Some stacks return an error when there is no SIM,
             // but they really turn the RF portion on
             // So, if we get an error, let's check to see if it
@@ -92,6 +95,7 @@ static void requestBaseBandVersion(void* data, size_t datalen, RIL_Token t)
 
     err = at_send_command_singleline("AT+CGMR", "+CGMR:", &p_response);
     if (err < 0 || !p_response->success) {
+        RLOGE("Failure occurred in sending %s due to: %s", "AT+CGMR", at_io_err_str(err));
         goto error;
     }
 
@@ -132,6 +136,7 @@ static void requestDeviceIdentity(void* data, size_t datalen, RIL_Token t)
 
     err = at_send_command_numeric("AT+CGSN", &p_response);
     if (err < 0 || p_response->success == 0) {
+        RLOGE("Failure occurred in sending %s due to: %s", "AT+CGSN", at_io_err_str(err));
         RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
         return;
     } else {
@@ -246,6 +251,7 @@ static void requestGetIMEI(void* data, size_t datalen, RIL_Token t)
     int err = at_send_command_numeric("AT+CGSN", &p_response);
 
     if (err < 0 || p_response->success == 0) {
+        RLOGE("Failure occurred in sending %s due to: %s", "AT+CGSN", at_io_err_str(err));
         RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
     } else {
         RIL_onRequestComplete(t, RIL_E_SUCCESS,
@@ -264,6 +270,7 @@ static void requestGetIMEISV(void* data, size_t datalen, RIL_Token t)
     int err = at_send_command_numeric("AT+CGSN=2", &p_response);
 
     if (err < 0 || p_response->success == 0) {
+        RLOGE("Failure occurred in sending %s due to: %s", "AT+CGSN=2", at_io_err_str(err));
         RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
     } else {
         RIL_onRequestComplete(t, RIL_E_SUCCESS,
@@ -301,6 +308,7 @@ static void requestEnableModem(void* data, size_t datalen, RIL_Token t)
     if (s_modem_enabled == 0) {
         err = at_send_command("AT+CFUN=0", &p_response);
         if (err < 0 || p_response->success == 0) {
+            RLOGE("Failure occurred in sending %s due to: %s", "AT+CFUN=0", at_io_err_str(err));
             at_response_free(p_response);
             RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
         } else {
@@ -393,7 +401,7 @@ int parse_technology_response(const char* response, int* current, int32_t* prefe
     RLOGD("Response: %s", line);
     err = at_tok_start(&p);
     if (err || !at_tok_hasmore(&p)) {
-        RLOGD("err: %d. p: %s", err, p);
+        RLOGE("err: %d. p: %s", err, p);
         free(line);
         return -1;
     }
@@ -469,6 +477,7 @@ int isRadioOn(void)
     err = at_send_command_singleline("AT+CFUN?", "+CFUN:", &p_response);
 
     if (err < 0 || p_response->success == 0) {
+        RLOGE("Failure occurred in sending %s due to: %s", "AT+CFUN?", at_io_err_str(err));
         // assume radio is off
         goto error;
     }
@@ -548,7 +557,10 @@ bool try_handle_unsol_modem(const char* s)
 {
     bool ret = false;
 
+    RLOGD("unsol modem string: %s", s);
+
     if (strStartsWith(s, "+CTEC: ")) {
+        RLOGI("Receive technology URC");
         int tech, mask;
         switch (parse_technology_response(s, &tech, NULL)) {
         case -1: // no argument could be parsed.
@@ -567,11 +579,15 @@ bool try_handle_unsol_modem(const char* s)
 
         ret = true;
     } else if (strStartsWith(s, "^MRINGTONE: ")) {
+        RLOGI("Receive ring tone URC");
         unsolicitedRingBackTone(s);
         ret = true;
     } else if (strStartsWith(s, "+CFUN: 0")) {
+        RLOGI("Receive radio off URC");
         setRadioState(RADIO_STATE_OFF);
         ret = true;
+    } else {
+        RLOGI("Can't match any unsol modem handlers");
     }
 
     return ret;

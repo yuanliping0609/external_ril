@@ -247,8 +247,10 @@ static int query_supported_techs(ModemInfo* mdm, int* supported)
 
     RLOGD("query_supported_techs");
     err = at_send_command_singleline("AT+CTEC=?", "+CTEC:", &p_response);
-    if (err || !p_response->success)
+    if (err || !p_response->success) {
+        RLOGE("Failure occurred in sending %s due to: %s", "AT+CTEC=?", at_io_err_str(err));
         goto error;
+    }
 
     line = p_response->p_intermediates->line;
     err = at_tok_start(&line);
@@ -445,12 +447,14 @@ static void initializeCallback(void* param)
 static void onUnsolicited(const char* s, const char* sms_pdu)
 {
     if (isModemEnable() == 0) {
+        RLOGW("Modem is not alive");
         return;
     }
 
     /* Ignore unsolicited responses until we're initialized.
      * This is OK because the RIL library will poll for initial state */
     if (getRadioState() == RADIO_STATE_UNAVAILABLE) {
+        RLOGW("Radio unavailable");
         return;
     }
 
@@ -481,6 +485,8 @@ static void onUnsolicited(const char* s, const char* sms_pdu)
     if (try_handle_unsol_sim(s)) {
         return;
     }
+
+    RLOGW("Can't handle AT line: %s", s);
 }
 
 /* Called on command or reader thread */
@@ -522,11 +528,11 @@ static void* mainLoop(void* param)
         while (fd < 0) {
             if (isInEmulator()) {
                 fd = open("/dev/ttyV0", O_RDWR);
-                RLOGD("opening qemu_modem_port %d!", fd);
+                RLOGI("opening qemu_modem_port %d!", fd);
             }
 
             if (fd < 0) {
-                perror("opening AT interface. retrying...");
+                RLOGE("opening AT interface. retrying...");
                 sleep(10);
                 /* never returns */
             }
@@ -560,7 +566,7 @@ const RIL_RadioFunctions* RIL_Init(const struct RIL_Env* env, int argc, char** a
 
     s_rilenv = env;
 
-    RLOGD("RIL_Init");
+    RLOGI("RIL_Init");
 
     initModem();
     if (!getModemInfo()) {
@@ -629,7 +635,7 @@ static void onRequest(int request, void* data, size_t datalen, RIL_Token t)
     int req_type = 0;
 
     req_type = request2eventtype(request);
-    RLOGI("onRequest: %d, reqtype: %d", request, req_type);
+    RLOGI("onRequest: %d<->%s, reqtype: %d", request, requestToString(request), req_type);
 
     if (req_type < 1) {
         RIL_onRequestComplete(t, RIL_E_REQUEST_NOT_SUPPORTED, NULL, 0);
@@ -639,7 +645,8 @@ static void onRequest(int request, void* data, size_t datalen, RIL_Token t)
     RLOGD("onRequest: %d, RadioState: %d", request, getRadioState());
     if (isModemEnable() == 0 && request != RIL_REQUEST_ENABLE_MODEM
         && request != RIL_REQUEST_GET_MODEM_STATUS) {
-        RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
+        RLOGE("The modem is disabled");
+        RIL_onRequestComplete(t, RIL_E_RADIO_NOT_AVAILABLE, NULL, 0);
         return;
     }
 
@@ -649,6 +656,7 @@ static void onRequest(int request, void* data, size_t datalen, RIL_Token t)
         && request != RIL_REQUEST_GET_SIM_STATUS
         && request != RIL_REQUEST_ENABLE_MODEM
         && request != RIL_REQUEST_GET_MODEM_STATUS) {
+        RLOGE("Radio unavailable");
         RIL_onRequestComplete(t, RIL_E_RADIO_NOT_AVAILABLE, NULL, 0);
         return;
     }
@@ -693,6 +701,7 @@ static void onRequest(int request, void* data, size_t datalen, RIL_Token t)
 
         default:
             // For all others, say NOT_AVAILABLE because the radio is off
+            RLOGE("Radio has been turned off");
             RIL_onRequestComplete(t, RIL_E_RADIO_NOT_AVAILABLE, NULL, 0);
             return;
         }

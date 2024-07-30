@@ -258,9 +258,10 @@ static void requestOrSendDataCallList(int cid, RIL_Token* t)
 
     err = at_send_command_multiline("AT+CGACT?", "+CGACT:", &p_response);
     if (err != 0 || p_response->success == 0) {
-        if (t != NULL)
+        if (t != NULL) {
+            RLOGE("Failure occurred in sending %s due to: %s", "AT+CGACT?", at_io_err_str(err));
             RIL_onRequestComplete(*t, RIL_E_GENERIC_FAILURE, NULL, 0);
-        else
+        } else
             RIL_onUnsolicitedResponse(RIL_UNSOL_DATA_CALL_LIST_CHANGED,
                 NULL, 0);
         return;
@@ -311,9 +312,10 @@ static void requestOrSendDataCallList(int cid, RIL_Token* t)
 
     err = at_send_command_multiline("AT+CGDCONT?", "+CGDCONT:", &p_response);
     if (err != 0 || p_response->success == 0) {
-        if (t != NULL)
+        if (t != NULL) {
+            RLOGE("Failure occurred in sending %s due to: %s", "AT+CGDCONT?", at_io_err_str(err));
             RIL_onRequestComplete(*t, RIL_E_GENERIC_FAILURE, NULL, 0);
-        else
+        } else
             RIL_onUnsolicitedResponse(RIL_UNSOL_DATA_CALL_LIST_CHANGED,
                 NULL, 0);
         return;
@@ -394,6 +396,7 @@ static void requestOrSendDataCallList(int cid, RIL_Token* t)
     snprintf(cmd, sizeof(cmd), "AT+CGCONTRDP=%d", cid);
     err = at_send_command_singleline(cmd, "+CGCONTRDP:", &p_response);
     if (err < 0 || p_response->success == 0) {
+        RLOGE("Failure occurred in sending %s due to: %s", cmd, at_io_err_str(err));
         goto error;
     }
 
@@ -491,8 +494,10 @@ static void requestDataRegistrationState(void* data, size_t datalen, RIL_Token t
 
     err = at_send_command_singleline(cmd, prefix, &p_response);
 
-    if (err < 0 || !p_response->success)
+    if (err < 0 || !p_response->success) {
+        RLOGE("Failure occurred in sending %s due to: %s", cmd, at_io_err_str(err));
         goto error;
+    }
 
     line = p_response->p_intermediates->line;
 
@@ -733,6 +738,7 @@ static void requestSetupDataCall(void* data, size_t datalen, RIL_Token t)
         err = at_send_command("ATD*99***1#", &p_response);
 
         if (err < 0 || p_response->success == 0) {
+            RLOGE("Failure occurred in sending AT command due to: %s", at_io_err_str(err));
             goto error;
         }
     }
@@ -798,7 +804,10 @@ bool try_handle_unsol_data(const char* s)
 {
     int ret = false;
 
+    RLOGD("unsol data string: %s", s);
+
     if (strStartsWith(s, "+CGEV:")) {
+        RLOGI("Receive data call list changed URC");
         /* Really, we can ignore NW CLASS and ME CLASS events here,
          * but right now we don't since extranous
          * RIL_UNSOL_DATA_CALL_LIST_CHANGED calls are tolerated
@@ -810,6 +819,8 @@ bool try_handle_unsol_data(const char* s)
         RIL_requestTimedCallback(onDataCallListChanged, NULL, NULL);
 #endif /* WORKAROUND_FAKE_CGEV */
         ret = true;
+    } else {
+        RLOGI("Can't match any unsol data handlers");
     }
 
     return ret;

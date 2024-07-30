@@ -56,13 +56,16 @@ static void requestWriteSmsToSim(void* data, size_t datalen, RIL_Token t)
     asprintf(&cmd, "AT+CMGW=%d,%d", length, p_args->status);
 
     err = at_send_command_sms(cmd, p_args->pdu, "+CMGW:", &p_response);
-    free(cmd);
 
-    if (err != 0 || p_response->success == 0)
+    if (err != 0 || p_response->success == 0) {
+        RLOGE("Failure occurred in sending %s due to: %s", cmd, at_io_err_str(err));
+        free(cmd);
         goto error;
+    }
 
     RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
     at_response_free(p_response);
+    free(cmd);
     return;
 
 error:
@@ -141,8 +144,10 @@ static void requestSendSMS(void* data, size_t datalen, RIL_Token t)
     free(cmd1);
     free(cmd2);
 
-    if (err != 0 || p_response->success == 0)
+    if (err != 0 || p_response->success == 0) {
+        RLOGE("Failure occurred in sending %s, due to: %s", "AT+CMGS", at_io_err_str(err));
         goto error;
+    }
 
     int messageRef = 1;
     char* line = p_response->p_intermediates->line;
@@ -262,6 +267,7 @@ static void requestGetSmsBroadcastConfig(void* data, size_t datalen, RIL_Token t
 
     err = at_send_command_singleline("AT+CSCB?", "+CSCB:", &p_response);
     if (err < 0 || p_response->success == 0) {
+        RLOGE("Failure occurred in sending %s due to: %s", "AT+CSCB?", at_io_err_str(err));
         goto error;
     }
 
@@ -379,6 +385,7 @@ static void requestSetSmsBroadcastConfig(void* data, size_t datalen,
     int err = at_send_command_singleline(cmd, "+CSCB:", &p_response);
 
     if (err < 0 || p_response->success == 0) {
+        RLOGE("Failure occurred in sending %s due to: %s", cmd, at_io_err_str(err));
         RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
     } else {
         RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
@@ -398,6 +405,7 @@ static void requestGetSmscAddress(void* data, size_t datalen, RIL_Token t)
 
     err = at_send_command_singleline("AT+CSCA?", "+CSCA:", &p_response);
     if (err < 0 || p_response->success == 0) {
+        RLOGE("Failure occurred in sending %s due to: %s", "AT+CSCA?", at_io_err_str(err));
         goto error;
     }
 
@@ -439,6 +447,7 @@ static void requestSetSmscAddress(void* data, size_t datalen, RIL_Token t)
     snprintf(cmd, sizeof(cmd), "AT+CSCA=%s,%d", (char*)data, (int)datalen);
     err = at_send_command(cmd, &p_response);
     if (err < 0 || p_response->success == 0) {
+        RLOGE("Failure occurred in sending %s due to: %s", cmd, at_io_err_str(err));
         RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
     } else {
         RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
@@ -459,6 +468,7 @@ static void requestDeleteSmsOnSim(void* data, size_t datalen, RIL_Token t)
     free(cmd);
 
     if (err < 0 || p_response->success == 0) {
+        RLOGE("Failure occurred in sending %s due to: %s", "AT+CMGD=%d", at_io_err_str(err));
         RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
     } else {
         RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
@@ -511,15 +521,21 @@ bool try_handle_unsol_sms(const char* s, const char* sms_pdu)
 {
     bool ret = false;
 
+    RLOGD("unsol sms string: %s", s);
+
     if (strStartsWith(s, "+CMT:")) {
+        RLOGI("Receive incoming sms URC");
         RIL_onUnsolicitedResponse(RIL_UNSOL_RESPONSE_NEW_SMS,
             sms_pdu, strlen(sms_pdu));
         ret = true;
     } else if (strStartsWith(s, "+CDS:")) {
+        RLOGI("Receive sms status report URC");
         RIL_onUnsolicitedResponse(
             RIL_UNSOL_RESPONSE_NEW_SMS_STATUS_REPORT,
             sms_pdu, strlen(sms_pdu));
         ret = true;
+    } else {
+        RLOGI("Can't match any unsol sms handlers");
     }
 
     return ret;
