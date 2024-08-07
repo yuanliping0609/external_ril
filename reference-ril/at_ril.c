@@ -341,17 +341,6 @@ static void waitForClose(void)
 /* do post-AT+CFUN=1 initialization */
 static void onRadioPowerOn(void)
 {
-#ifdef USE_TI_COMMANDS
-    /*  Must be after CFUN=1 */
-    /*  TI specific -- notifications for CPHS things such */
-    /*  as CPHS message waiting indicator */
-
-    at_send_command("AT%CPHS=1", NULL);
-
-    /*  TI specific -- enable NITZ unsol notifs */
-    at_send_command("AT%CTZV=1", NULL);
-#endif
-
     pollSIMState(NULL);
 }
 
@@ -423,15 +412,6 @@ static void initializeCallback(void* param)
 
     /*  SMS PDU mode */
     at_send_command("AT+CMGF=0", NULL);
-
-#ifdef USE_TI_COMMANDS
-
-    at_send_command("AT%CPI=3", NULL);
-
-    /*  TI specific -- notifications when SMS is ready (currently ignored) */
-    at_send_command("AT%CSTAT=1", NULL);
-
-#endif /* USE_TI_COMMANDS */
 
     /* assume radio is off on error */
     if (isRadioOn() > 0) {

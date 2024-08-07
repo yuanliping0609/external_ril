@@ -617,12 +617,6 @@ static void requestSetupDataCall(void* data, size_t datalen, RIL_Token t)
 
     apn = ((const char**)data)[2];
 
-#ifdef USE_TI_COMMANDS
-    // Config for multislot class 10 (probably default anyway eh?)
-    err = at_send_command("AT%CPRIM=\"GMM\",\"CONFIG MULTISLOT_CLASS=<10>\"", NULL);
-    err = at_send_command("AT%DATA=2,\"UART\",1,,\"SER\",\"UART\",0", NULL);
-#endif /* USE_TI_COMMANDS */
-
     int fd, qmistatus;
     size_t cur = 0;
     size_t len;

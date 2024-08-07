@@ -45,6 +45,9 @@ extern void AT_DUMP(const char* prefix, const char* buff, int len);
                                         * did not get back an intermediate      \
                                         * response */
 
+#define AT_OK (1)
+#define AT_ERR (0)
+
 typedef enum {
     NO_RESULT, /* no intermediate response expected */
     NUMERIC, /* a single intermediate response starting with a 0-9 */

@@ -31,33 +31,6 @@
 #include "atchannel.h"
 #include "misc.h"
 
-#ifdef USE_TI_COMMANDS
-
-// Enable a workaround
-// 1) Make incoming call, do not answer
-// 2) Hangup remote end
-// Expected: call should disappear from CLCC line
-// Actual: Call shows as "ACTIVE" before disappearing
-#define WORKAROUND_ERRONEOUS_ANSWER 1
-
-// Some variants of the TI stack do not support the +CGEV unsolicited
-// response. However, they seem to send an unsolicited +CME ERROR: 150
-#define WORKAROUND_FAKE_CGEV 1
-#endif
-
-#ifdef WORKAROUND_ERRONEOUS_ANSWER
-// Max number of times we'll try to repoll when we think
-// we have a AT+CLCC race condition
-#define REPOLL_CALLS_COUNT_MAX 4
-
-// Line index that was incoming or waiting at last poll, or -1 for none
-static int s_incomingOrWaitingLine = -1;
-// Number of times we've asked for a repoll of AT+CLCC
-static int s_repollCallsCount = 0;
-// Should we expect a call to be answered in the next CLCC?
-static int s_expectAnswer = 0;
-#endif /* WORKAROUND_ERRONEOUS_ANSWER */
-
 static int clccStateToRILState(int state, RIL_CallState* p_state)
 {
     switch (state) {
@@ -98,41 +71,57 @@ static int callFromCLCCLine(char* line, RIL_Call* p_call)
     int mode;
 
     err = at_tok_start(&line);
-    if (err < 0)
+    if (err < 0) {
+        RLOGE("Failed to parse line in %s", __func__);
         goto error;
+    }
 
     err = at_tok_nextint(&line, &(p_call->index));
-    if (err < 0)
+    if (err < 0) {
+        RLOGE("Failed to parse index in %s", __func__);
         goto error;
+    }
 
     err = at_tok_nextbool(&line, &(p_call->isMT));
-    if (err < 0)
+    if (err < 0) {
+        RLOGE("Failed to parse isMT in %s", __func__);
         goto error;
+    }
 
     err = at_tok_nextint(&line, &state);
-    if (err < 0)
+    if (err < 0) {
+        RLOGE("Failed to parse state in %s", __func__);
         goto error;
+    }
 
     err = clccStateToRILState(state, &(p_call->state));
-    if (err < 0)
+    if (err < 0) {
+        RLOGE("Failed to parse call state in %s", __func__);
         goto error;
+    }
 
     err = at_tok_nextint(&line, &mode);
-    if (err < 0)
+    if (err < 0) {
+        RLOGE("Failed to parse mode in %s", __func__);
         goto error;
+    }
 
     p_call->isVoice = (mode == 0);
 
     err = at_tok_nextbool(&line, &(p_call->isMpty));
-    if (err < 0)
+    if (err < 0) {
+        RLOGE("Failed to parse isMpty in %s", __func__);
         goto error;
+    }
 
     if (at_tok_hasmore(&line)) {
         err = at_tok_nextstr(&line, &(p_call->number));
 
         /* tolerate null here */
-        if (err < 0)
+        if (err < 0) {
+            RLOGE("tolerate null here");
             return 0;
+        }
 
         // Some lame implementations return strings
         // like "NOT AVAILABLE" in the CLCC line
@@ -142,8 +131,10 @@ static int callFromCLCCLine(char* line, RIL_Call* p_call)
         }
 
         err = at_tok_nextint(&line, &p_call->toa);
-        if (err < 0)
+        if (err < 0) {
+            RLOGE("Failed to parse toa in %s", __func__);
             goto error;
+        }
     }
 
     p_call->uusInfo = NULL;
@@ -160,26 +151,31 @@ static void requestCallFailCause(void* data, size_t datalen, RIL_Token t)
     (void)data;
     (void)datalen;
 
-    int err = -1;
-    int response;
     char* line = NULL;
     ATResponse* p_response = NULL;
+    int err = -1;
+    int cause = 0;
 
     err = at_send_command_singleline("AT+CEER?", "+CEER:", &p_response);
-    if (err < 0 || p_response->success == 0) {
+    if (err != AT_ERROR_OK || !p_response || p_response->success != AT_OK) {
+        RLOGE("Fail to send AT+CEER? due to: %s", at_io_err_str(err));
         goto error;
     }
 
     line = p_response->p_intermediates->line;
     err = at_tok_start(&line);
-    if (err < 0)
+    if (err < 0) {
+        RLOGE("Failed to parse line in %s", __func__);
         goto error;
+    }
 
-    err = at_tok_nextint(&line, &response);
-    if (err < 0)
+    err = at_tok_nextint(&line, &cause);
+    if (err < 0) {
+        RLOGE("Failed to parse fail cause in %s", __func__);
         goto error;
+    }
 
-    RIL_onRequestComplete(t, RIL_E_SUCCESS, &response, sizeof(response));
+    RIL_onRequestComplete(t, RIL_E_SUCCESS, &cause, sizeof(cause));
     at_response_free(p_response);
     return;
 
@@ -201,7 +197,9 @@ static void requestCallSelection(void* data, size_t datalen, RIL_Token t, int re
     char conference[] = "AT+CHLD=3";
     char reject[] = "ATH";
 
-    char* atCommand;
+    char* atCommand = NULL;
+    ATResponse* p_response = NULL;
+    int err = -1;
 
     if (getSIMStatus() == SIM_ABSENT) {
         RIL_onRequestComplete(t, RIL_E_RADIO_NOT_AVAILABLE, NULL, 0);
@@ -223,9 +221,6 @@ static void requestCallSelection(void* data, size_t datalen, RIL_Token t, int re
         // "Places all active calls (if any exist) on hold and accepts
         //  the other (held or waiting) call."
         atCommand = switchWaiting;
-#ifdef WORKAROUND_ERRONEOUS_ANSWER
-        s_expectAnswer = 1;
-#endif /* WORKAROUND_ERRONEOUS_ANSWER */
         break;
     case RIL_REQUEST_CONFERENCE:
         // "Adds a held call to the conversation"
@@ -239,10 +234,21 @@ static void requestCallSelection(void* data, size_t datalen, RIL_Token t, int re
         assert(0);
     }
 
-    at_send_command(atCommand, NULL);
+    err = at_send_command(atCommand, &p_response);
+    if (err != AT_ERROR_OK || !p_response || p_response->success != AT_OK) {
+        RLOGE("Fail to send AT command due to: %s", at_io_err_str(err));
+        goto error;
+    }
+
     // Success or failure is ignored by the upper layer here.
     // It will call GET_CURRENT_CALLS and determine success that way.
     RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
+    at_response_free(p_response);
+    return;
+
+error:
+    RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
+    at_response_free(p_response);
 }
 
 static void requestGetCurrentCalls(void* data, size_t datalen, RIL_Token t)
@@ -250,33 +256,31 @@ static void requestGetCurrentCalls(void* data, size_t datalen, RIL_Token t)
     (void)data;
     (void)datalen;
 
-    int err;
-    ATResponse* p_response;
-    ATLine* p_cur;
-    int countCalls;
-    int countValidCalls;
-    RIL_Call* p_calls;
-    RIL_Call** pp_calls;
-    int i;
-    int needRepoll = 0;
-
-#ifdef WORKAROUND_ERRONEOUS_ANSWER
-    int prevIncomingOrWaitingLine;
-
-    prevIncomingOrWaitingLine = s_incomingOrWaitingLine;
-    s_incomingOrWaitingLine = -1;
-#endif /*WORKAROUND_ERRONEOUS_ANSWER*/
+    int err = -1;
+    ATResponse* p_response = NULL;
+    ATLine* p_cur = NULL;
+    int countCalls = 0;
+    int countValidCalls = 0;
+    RIL_Call* p_calls = NULL;
+    RIL_Call** pp_calls = NULL;
+    RIL_Errno ril_err = RIL_E_SUCCESS;
 
     err = at_send_command_multiline("AT+CLCC", "+CLCC:", &p_response);
 
-    if (err != 0 || p_response->success == 0) {
+    /* CLCC allows empty line if no calls found */
+    if (err == AT_ERROR_INVALID_RESPONSE) {
+        RLOGW("No current calls found");
+        goto on_exit;
+    }
+
+    if (err != AT_ERROR_OK || !p_response || p_response->success != AT_OK) {
         RLOGE("Fail to send AT+CLCC due to: %s", at_io_err_str(err));
-        RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
-        return;
+        ril_err = RIL_E_GENERIC_FAILURE;
+        goto on_exit;
     }
 
     /* count the calls */
-    for (countCalls = 0, p_cur = p_response->p_intermediates; p_cur != NULL; p_cur = p_cur->p_next) {
+    for (p_cur = p_response->p_intermediates; p_cur != NULL; p_cur = p_cur->p_next) {
         countCalls++;
     }
 
@@ -287,7 +291,7 @@ static void requestGetCurrentCalls(void* data, size_t datalen, RIL_Token t)
     memset(p_calls, 0, countCalls * sizeof(RIL_Call));
 
     /* init the pointer array */
-    for (i = 0; i < countCalls; i++) {
+    for (int i = 0; i < countCalls; i++) {
         pp_calls[i] = &(p_calls[i]);
     }
 
@@ -299,71 +303,13 @@ static void requestGetCurrentCalls(void* data, size_t datalen, RIL_Token t)
             continue;
         }
 
-#ifdef WORKAROUND_ERRONEOUS_ANSWER
-        if (p_calls[countValidCalls].state == RIL_CALL_INCOMING
-            || p_calls[countValidCalls].state == RIL_CALL_WAITING) {
-            s_incomingOrWaitingLine = p_calls[countValidCalls].index;
-        }
-#endif /*WORKAROUND_ERRONEOUS_ANSWER*/
-
-        if (p_calls[countValidCalls].state != RIL_CALL_ACTIVE
-            && p_calls[countValidCalls].state != RIL_CALL_HOLDING) {
-            needRepoll = 1;
-        }
-
         countValidCalls++;
     }
 
-#ifdef WORKAROUND_ERRONEOUS_ANSWER
-    // Basically:
-    // A call was incoming or waiting
-    // Now it's marked as active
-    // But we never answered it
-    //
-    // This is probably a bug, and the call will probably
-    // disappear from the call list in the next poll
-    if (prevIncomingOrWaitingLine >= 0
-        && s_incomingOrWaitingLine < 0
-        && s_expectAnswer == 0) {
-        for (i = 0; i < countValidCalls; i++) {
-
-            if (p_calls[i].index == prevIncomingOrWaitingLine
-                && p_calls[i].state == RIL_CALL_ACTIVE
-                && s_repollCallsCount < REPOLL_CALLS_COUNT_MAX) {
-                RLOGI(
-                    "Hit WORKAROUND_ERRONOUS_ANSWER case."
-                    " Repoll count: %d\n",
-                    s_repollCallsCount);
-                s_repollCallsCount++;
-                goto error;
-            }
-        }
-    }
-
-    s_expectAnswer = 0;
-    s_repollCallsCount = 0;
-#endif /*WORKAROUND_ERRONEOUS_ANSWER*/
-
-    RIL_onRequestComplete(t, RIL_E_SUCCESS, pp_calls,
-        countValidCalls * sizeof(RIL_Call*));
-
+on_exit:
+    RIL_onRequestComplete(t, ril_err, ril_err == RIL_E_SUCCESS ? pp_calls : NULL,
+        ril_err == RIL_E_SUCCESS ? countValidCalls * sizeof(RIL_Call*) : 0);
     at_response_free(p_response);
-
-#ifdef POLL_CALL_STATE
-    if (countValidCalls) { // We don't seem to get a "NO CARRIER" message from
-                           // smd, so we're forced to poll until the call ends.
-#else
-    if (needRepoll) {
-#endif
-        // RIL_requestTimedCallback (sendCallStateChanged, NULL, &TIMEVAL_CALLSTATEPOLL);
-    }
-
-    return;
-#ifdef WORKAROUND_ERRONEOUS_ANSWER
-error:
-    RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
-    at_response_free(p_response);
-#endif
 }
 
 static void requestDtmfStart(void* data, size_t datalen, RIL_Token t)
@@ -374,6 +320,7 @@ static void requestDtmfStart(void* data, size_t datalen, RIL_Token t)
     char* cmd;
     ATResponse* p_response = NULL;
     int err = -1;
+    RIL_Errno ril_err = RIL_E_SUCCESS;
 
     if (NULL == data) {
         RLOGE("data is NULL!");
@@ -382,23 +329,31 @@ static void requestDtmfStart(void* data, size_t datalen, RIL_Token t)
     }
 
     c_key = ((char*)data)[0];
-    if (!(c_key >= '0' && c_key <= '9') && c_key != '#' && c_key != '*' && !(c_key >= 'A' && c_key <= 'D')) {
+    if (!(c_key >= '0' && c_key <= '9')
+        && c_key != '#' && c_key != '*'
+        && !(c_key >= 'A' && c_key <= 'D')) {
         RLOGE("Invalid argument in RIL");
-        RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
-        return;
+        ril_err = RIL_E_INVALID_ARGUMENTS;
+        goto on_exit;
     }
 
-    asprintf(&cmd, "AT+VTS=%c", c_key);
+    if (asprintf(&cmd, "AT+VTS=%c", c_key) < 0) {
+        RLOGE("Failed to allocate memory");
+        ril_err = RIL_E_NO_MEMORY;
+        goto on_exit;
+    }
+
     err = at_send_command(cmd, &p_response);
-    free(cmd);
-
-    if (err < 0 || p_response->success == 0) {
-        RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
-    } else {
-        RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
+    if (err != AT_ERROR_OK || !p_response || p_response->success != AT_OK) {
+        RLOGE("Fail to send %s due to: %s", cmd, at_io_err_str(err));
+        ril_err = RIL_E_GENERIC_FAILURE;
+        goto on_exit;
     }
 
+on_exit:
+    RIL_onRequestComplete(t, ril_err, NULL, 0);
     at_response_free(p_response);
+    free(cmd);
 }
 
 static void requestDtmfStop(void* data, size_t datalen, RIL_Token t)
@@ -409,18 +364,24 @@ static void requestDtmfStop(void* data, size_t datalen, RIL_Token t)
     int err = -1;
 
     if (NULL != data) {
+        RLOGE("data is NULL!");
         RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
         return;
     }
 
     err = at_send_command("AT+VTS=", &p_response);
 
-    if (err < 0 || p_response->success == 0) {
-        RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
-    } else {
-        RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
+    if (err < 0 || !p_response || p_response->success != AT_OK) {
+        RLOGE("Fail to send %s due to: %s", "AT+VTS=", at_io_err_str(err));
+        goto error;
     }
 
+    RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
+    at_response_free(p_response);
+    return;
+
+error:
+    RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
     at_response_free(p_response);
 }
 
@@ -428,9 +389,18 @@ static void requestDial(void* data, size_t datalen, RIL_Token t)
 {
     (void)datalen;
 
-    RIL_Dial* p_dial;
-    char* cmd;
-    const char* clir;
+    RIL_Dial* p_dial = NULL;
+    char* cmd = NULL;
+    const char* clir = NULL;
+    int err = AT_ERROR_GENERIC;
+    ATResponse* p_response = NULL;
+    RIL_Errno ril_err = RIL_E_SUCCESS;
+
+    if (data == NULL) {
+        RLOGD("req_dial data is null!");
+        RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
+        return;
+    }
 
     p_dial = (RIL_Dial*)data;
 
@@ -447,33 +417,66 @@ static void requestDial(void* data, size_t datalen, RIL_Token t)
         break; /* subscription default */
     }
 
-    asprintf(&cmd, "ATD%s%s;", p_dial->address, clir);
-    at_send_command(cmd, NULL);
-    free(cmd);
+    if (asprintf(&cmd, "ATD%s%s;", p_dial->address, clir) < 0) {
+        RLOGE("Failed to allocate memory");
+        ril_err = RIL_E_NO_MEMORY;
+        goto on_exit;
+    }
 
+    err = at_send_command(cmd, &p_response);
+    if (err != AT_ERROR_OK || !p_response || p_response->success != AT_OK) {
+        RLOGE("Fail to send %s due to: %s", cmd, at_io_err_str(err));
+        ril_err = RIL_E_GENERIC_FAILURE;
+        goto on_exit;
+    }
+
+on_exit:
     /* success or failure is ignored by the upper layer here.
-       it will call GET_CURRENT_CALLS and determine success that way */
-    RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
+     * it will call GET_CURRENT_CALLS and determine success that way */
+    RIL_onRequestComplete(t, ril_err, NULL, 0);
+    at_response_free(p_response);
+    free(cmd);
 }
 
 static void requestHangup(void* data, size_t datalen, RIL_Token t)
 {
     (void)datalen;
 
-    int* p_line;
-    char* cmd;
+    int* p_line = NULL;
+    char* cmd = NULL;
+    int err = -1;
+    ATResponse* p_response = NULL;
+    RIL_Errno ril_err = RIL_E_SUCCESS;
+
+    if (data == NULL) {
+        RLOGE("req_dial data is null!");
+        RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
+        return;
+    }
 
     p_line = (int*)data;
 
     // 3GPP 22.030 6.5.5
     // "Releases a specific active call X"
-    asprintf(&cmd, "AT+CHLD=1%d", p_line[0]);
-    at_send_command(cmd, NULL);
-    free(cmd);
+    if (asprintf(&cmd, "AT+CHLD=1%d", p_line[0]) < 0) {
+        RLOGE("Failed to allocate memory");
+        ril_err = RIL_E_NO_MEMORY;
+        goto on_exit;
+    }
 
+    err = at_send_command(cmd, &p_response);
+    if (err != AT_ERROR_OK || !p_response || p_response->success != AT_OK) {
+        RLOGE("Fail to send %s due to: %s", cmd, at_io_err_str(err));
+        ril_err = RIL_E_GENERIC_FAILURE;
+        goto on_exit;
+    }
+
+on_exit:
     /* success or failure is ignored by the upper layer here.
      * it will call GET_CURRENT_CALLS and determine success that way */
-    RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
+    RIL_onRequestComplete(t, ril_err, NULL, 0);
+    at_response_free(p_response);
+    free(cmd);
 }
 
 static void requestEccDial(void* data, size_t datalen, RIL_Token t)
@@ -483,7 +486,16 @@ static void requestEccDial(void* data, size_t datalen, RIL_Token t)
     char cmd[64] = { 0 };
     const char* clir = NULL;
     int err = -1;
-    RIL_EmergencyDial* p_eccDial = (RIL_EmergencyDial*)data;
+    RIL_EmergencyDial* p_eccDial = NULL;
+    ATResponse* p_response = NULL;
+
+    if (data == NULL) {
+        RLOGE("req_emergency_dial data is null!");
+        RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
+        return;
+    }
+
+    p_eccDial = (RIL_EmergencyDial*)data;
 
     switch (p_eccDial->dialInfo.clir) {
     case 0: /* subscription default */
@@ -510,17 +522,19 @@ static void requestEccDial(void* data, size_t datalen, RIL_Token t)
         snprintf(cmd, sizeof(cmd), "ATD%s%s;", p_eccDial->dialInfo.address, clir);
     }
 
-    err = at_send_command(cmd, NULL);
-    if (err != 0) {
+    err = at_send_command(cmd, &p_response);
+    if (err != AT_ERROR_OK || !p_response || p_response->success != AT_OK) {
         RLOGE("Failure occurred in sending %s due to: %s", cmd, at_io_err_str(err));
         goto error;
     }
 
     RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
+    at_response_free(p_response);
     return;
 
 error:
     RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
+    at_response_free(p_response);
 }
 
 /**
@@ -561,33 +575,43 @@ static void unsolicitedSuppSvcNotification(int notificationType,
 
 static void requestChangeBarringPassword(char** data, size_t datalen, RIL_Token t)
 {
-    int err = -1;
-    char cmd[64] = { 0 };
+    int err = AT_ERROR_GENERIC;
+    char* cmd = NULL;
     ATResponse* p_response = NULL;
+    RIL_Errno ril_err = RIL_E_SUCCESS;
+
+    if (data == NULL) {
+        RLOGE("requestChangeBarringPassword data is null!");
+        RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
+        return;
+    }
 
     if (datalen != 3 * sizeof(char*)
         || data[0] == NULL || data[1] == NULL
         || data[2] == NULL || strlen(data[0]) == 0
         || strlen(data[1]) == 0 || strlen(data[2]) == 0) {
+        RLOGE("Invalid arguments");
         RIL_onRequestComplete(t, RIL_E_INVALID_ARGUMENTS, NULL, 0);
         return;
     }
 
-    snprintf(cmd, sizeof(cmd), "AT+CPWD=\"%s\",\"%s\",\"%s\"", data[0], data[1], data[2]);
-
-    err = at_send_command(cmd, &p_response);
-    if (err < 0 || p_response->success == 0) {
-        RLOGE("Failure occurred in sending %s due to: %s", cmd, at_io_err_str(err));
-        goto error;
+    if (asprintf(&cmd, "AT+CPWD=\"%s\",\"%s\",\"%s\"", data[0], data[1], data[2]) < 0) {
+        RLOGE("Failed to allocate memory");
+        ril_err = RIL_E_NO_MEMORY;
+        goto on_exit;
     }
 
-    RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
-    at_response_free(p_response);
-    return;
+    err = at_send_command(cmd, &p_response);
+    if (err < 0 || !p_response || p_response->success != AT_OK) {
+        RLOGE("Failure occurred in sending %s due to: %s", cmd, at_io_err_str(err));
+        ril_err = RIL_E_GENERIC_FAILURE;
+        goto on_exit;
+    }
 
-error:
-    RIL_onRequestComplete(t, RIL_E_PASSWORD_INCORRECT, NULL, 0);
+on_exit:
+    RIL_onRequestComplete(t, ril_err, NULL, 0);
     at_response_free(p_response);
+    free(cmd);
 }
 
 static void requestSetCallWaiting(void* data, size_t datalen, RIL_Token t)
@@ -595,77 +619,126 @@ static void requestSetCallWaiting(void* data, size_t datalen, RIL_Token t)
     (void)datalen;
 
     ATResponse* p_response = NULL;
-    int err = -1;
-    char cmd[32] = { 0 };
-    int enable = ((int*)data)[0];
-    int serviceClass = ((int*)data)[1];
+    int err = AT_ERROR_GENERIC;
+    RIL_Errno ril_err = RIL_E_SUCCESS;
+    char* cmd = NULL;
+    int enable;
+    int serviceClass;
+
+    if (data == NULL) {
+        RLOGE("requestSetCallWaiting data is null!");
+        RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
+        return;
+    }
+
+    enable = ((int*)data)[0];
+    serviceClass = ((int*)data)[1];
 
     if (serviceClass == 0) {
-        snprintf(cmd, sizeof(cmd), "AT+CCWA=1,%d", enable);
+        if (asprintf(&cmd, "AT+CCWA=1,%d", enable) < 0) {
+            RLOGE("Failed to allocate memory");
+            ril_err = RIL_E_NO_MEMORY;
+            goto on_exit;
+        }
     } else {
-        snprintf(cmd, sizeof(cmd), "AT+CCWA=1,%d,%d", enable, serviceClass);
+        if (asprintf(&cmd, "AT+CCWA=1,%d,%d", enable, serviceClass) < 0) {
+            RLOGE("Failed to allocate memory");
+            ril_err = RIL_E_NO_MEMORY;
+            goto on_exit;
+        }
     }
 
     err = at_send_command(cmd, &p_response);
-    if (err < 0 || p_response->success == 0) {
+    if (err < 0 || !p_response || p_response->success != AT_OK) {
         RLOGE("Failure occurred in sending %s due to: %s", cmd, at_io_err_str(err));
-        RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
-    } else {
-        RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
+        ril_err = RIL_E_GENERIC_FAILURE;
+        goto on_exit;
     }
 
+    RLOGD("requestSetCallWaiting enable=%d, class=%d", enable, serviceClass);
+
+on_exit:
+    RIL_onRequestComplete(t, ril_err, NULL, 0);
     at_response_free(p_response);
+    free(cmd);
 }
 
 static void requestQueryCallWaiting(void* data, size_t datalen, RIL_Token t)
 {
     (void)datalen;
 
-    int err = -1, mode = 0;
-    int serviceClass = ((int*)data)[0];
-    int response[2] = { 0, 0 };
-    char cmd[32] = { 0 };
-    char* line;
-    ATLine* p_cur;
     ATResponse* p_response = NULL;
+    int err = -1;
+    int mode = 0;
+    int response[2] = { 0, 0 };
+    char* cmd = NULL;
+    char* line = NULL;
+    RIL_Errno ril_err = RIL_E_SUCCESS;
+    int serviceClass;
+
+    if (data == NULL) {
+        RLOGE("requestQueryCallWaiting data is null!");
+        RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
+        return;
+    }
+
+    serviceClass = ((int*)data)[0];
 
     if (serviceClass == 0) {
-        snprintf(cmd, sizeof(cmd), "AT+CCWA=1,2");
+        if (asprintf(&cmd, "AT+CCWA=1,2") < 0) {
+            RLOGE("Failed to allocate memory");
+            ril_err = RIL_E_GENERIC_FAILURE;
+            goto on_exit;
+        }
     } else {
-        snprintf(cmd, sizeof(cmd), "AT+CCWA=1,2,%d", serviceClass);
+        if (asprintf(&cmd, "AT+CCWA=1,2,%d", serviceClass)) {
+            RLOGE("Failed to allocate memory");
+            ril_err = RIL_E_GENERIC_FAILURE;
+            goto on_exit;
+        }
     }
 
     err = at_send_command_multiline(cmd, "+CCWA:", &p_response);
-    if (err < 0 || p_response->success == 0) {
+    if (err != AT_ERROR_OK || !p_response || p_response->success != AT_OK) {
         RLOGE("Failure occurred in sending %s due to: %s", cmd, at_io_err_str(err));
-        goto error;
+        ril_err = RIL_E_GENERIC_FAILURE;
+        goto on_exit;
     }
 
-    for (p_cur = p_response->p_intermediates; p_cur != NULL; p_cur = p_cur->p_next) {
+    for (ATLine* p_cur = p_response->p_intermediates; p_cur != NULL; p_cur = p_cur->p_next) {
         line = p_cur->line;
         err = at_tok_start(&line);
-        if (err < 0)
-            goto error;
+        if (err < 0) {
+            RLOGE("Failed to parse line in %s", __func__);
+            ril_err = RIL_E_GENERIC_FAILURE;
+            goto on_exit;
+        }
 
         err = at_tok_nextint(&line, &mode);
-        if (err < 0)
-            goto error;
+        if (err < 0) {
+            RLOGE("Fail to parse mode in %s", __func__);
+            ril_err = RIL_E_GENERIC_FAILURE;
+            goto on_exit;
+        }
 
         err = at_tok_nextint(&line, &serviceClass);
-        if (err < 0)
-            goto error;
+        if (err < 0) {
+            RLOGE("Fail to parse service class in %s", __func__);
+            ril_err = RIL_E_GENERIC_FAILURE;
+            goto on_exit;
+        }
 
         response[0] = mode;
         response[1] |= serviceClass;
+
+        RLOGD("requestQueryCallWaiting mode=%d, class=%d", response[0], response[1]);
     }
 
-    RIL_onRequestComplete(t, RIL_E_SUCCESS, response, sizeof(response));
+on_exit:
+    RIL_onRequestComplete(t, ril_err, ril_err == RIL_E_SUCCESS ? response : NULL,
+        ril_err == RIL_E_SUCCESS ? sizeof(response) : 0);
     at_response_free(p_response);
-    return;
-
-error:
-    RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
-    at_response_free(p_response);
+    free(cmd);
 }
 
 static int forwardFromCCFCULine(char* line, RIL_CallForwardInfo* p_forward)
@@ -674,36 +747,49 @@ static int forwardFromCCFCULine(char* line, RIL_CallForwardInfo* p_forward)
     int i = 0;
 
     if (line == NULL || p_forward == NULL) {
+        RLOGE("Line inivalid");
         goto error;
     }
 
     err = at_tok_start(&line);
-    if (err < 0)
+    if (err < 0) {
+        RLOGE("Failed to parse line in %s", __func__);
         goto error;
+    }
 
     err = at_tok_nextint(&line, &(p_forward->status));
-    if (err < 0)
+    if (err < 0) {
+        RLOGE("Failed to parse status in %s", __func__);
         goto error;
+    }
 
     err = at_tok_nextint(&line, &(p_forward->serviceClass));
-    if (err < 0)
+    if (err < 0) {
+        RLOGE("Failed to parse class in %s", __func__);
         goto error;
+    }
 
     if (at_tok_hasmore(&line)) {
         int numberType = 0;
         err = at_tok_nextint(&line, &numberType);
-        if (err < 0)
+        if (err < 0) {
+            RLOGE("Failed to parse numberType in %s", __func__);
             goto error;
+        }
 
         err = at_tok_nextint(&line, &p_forward->toa);
-        if (err < 0)
+        if (err < 0) {
+            RLOGE("Failed to parse toa in %s", __func__);
             goto error;
+        }
 
         err = at_tok_nextstr(&line, &(p_forward->number));
 
         /* tolerate null here */
-        if (err < 0)
+        if (err < 0) {
+            RLOGD("Number is null!");
             return 0;
+        }
 
         if (at_tok_hasmore(&line)) {
             for (i = 0; i < 2; i++) {
@@ -725,31 +811,47 @@ error:
     return -1;
 }
 
-static void requestQueryCallForward(RIL_CallForwardInfo* data,
-    size_t datalen, RIL_Token t)
+static void requestQueryCallForward(void* data, size_t datalen, RIL_Token t)
 {
     int err = -1;
-    char cmd[128] = { 0 };
+    char* cmd = NULL;
     ATResponse* p_response = NULL;
     ATLine* p_cur = NULL;
+    RIL_Errno ril_err = RIL_E_SUCCESS;
+    int validCount = 0;
+    int forwardCount = 0;
+    RIL_CallForwardInfo* info = NULL;
 
-    if (datalen != sizeof(*data)) {
-        goto error;
+    if (data == NULL) {
+        RLOGD("requestQueryCallForward data is null!");
+        RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
+        return;
     }
 
-    snprintf(cmd, sizeof(cmd), "AT+CCFCU=%d,2,%d,%d,\"%s\",%d", data->reason, 2,
-        data->toa, data->number ? data->number : "", data->serviceClass);
+    info = (RIL_CallForwardInfo*)data;
+
+    if (info->reason < 0 || info->reason > 5) {
+        RLOGE("requestQueryCallForward reason is invalid!");
+        RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
+        return;
+    }
+
+    if (asprintf(&cmd, "AT+CCFCU=%d,2,%d,%d,\"%s\",%d", info->reason,
+            2, info->toa, info->number ? info->number : "", info->serviceClass)
+        < 0) {
+        RLOGE("Failed to allocate memory");
+        ril_err = RIL_E_NO_MEMORY;
+        goto on_exit;
+    }
 
     err = at_send_command_multiline(cmd, "+CCFCU:", &p_response);
-    if (err < 0 || p_response->success == 0) {
+    if (err != AT_ERROR_OK || !p_response || p_response->success != AT_OK) {
         RLOGE("Failure occurred in sending %s due to: %s", cmd, at_io_err_str(err));
-        goto error;
+        ril_err = RIL_E_GENERIC_FAILURE;
+        goto on_exit;
     }
 
     RIL_CallForwardInfo **forwardList = NULL, *forwardPool = NULL;
-    int forwardCount = 0;
-    int validCount = 0;
-    int i = 0;
 
     for (p_cur = p_response->p_intermediates; p_cur != NULL;
          p_cur = p_cur->p_next, forwardCount++) {
@@ -764,93 +866,145 @@ static void requestQueryCallForward(RIL_CallForwardInfo* data,
     memset(forwardPool, 0, forwardCount * sizeof(RIL_CallForwardInfo));
 
     /* init the pointer array */
-    for (i = 0; i < forwardCount; i++) {
+    for (int i = 0; i < forwardCount; i++) {
         forwardList[i] = &(forwardPool[i]);
     }
 
     for (p_cur = p_response->p_intermediates;
          p_cur != NULL; p_cur = p_cur->p_next) {
         err = forwardFromCCFCULine(p_cur->line, forwardList[validCount]);
-        forwardList[validCount]->reason = data->reason;
+        forwardList[validCount]->reason = info->reason;
         if (err == 0)
             validCount++;
     }
 
-    RIL_onRequestComplete(t, RIL_E_SUCCESS, validCount ? forwardList : NULL,
+on_exit:
+    RIL_onRequestComplete(t, ril_err, validCount ? forwardList : NULL,
         validCount * sizeof(RIL_CallForwardInfo*));
     at_response_free(p_response);
-    return;
-
-error:
-    RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
-    at_response_free(p_response);
+    free(cmd);
 }
 
-static void requestSetCallForward(RIL_CallForwardInfo* data,
-    size_t datalen, RIL_Token t)
+static void requestSetCallForward(void* data, size_t datalen, RIL_Token t)
 {
     int err = -1;
-    char cmd[128] = { 0 };
+    char* cmd = NULL;
     size_t offset = 0;
     ATResponse* p_response = NULL;
+    RIL_CallForwardInfo* info = NULL;
+    RIL_Errno ril_err = RIL_E_SUCCESS;
+    char* cmd_offset = NULL;
 
-    if (datalen != sizeof(*data) || (data->status == 3 && data->number == NULL)) {
-        goto error;
+    if (data == NULL) {
+        RLOGE("requestSetCallForward data is null!");
+        RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
+        return;
     }
 
-    snprintf(cmd, sizeof(cmd), "AT+CCFCU=%d,%d,%d,%d,\"%s\",%d",
-        data->reason, data->status, 2, data->toa,
-        data->number ? data->number : "", data->serviceClass);
+    info = (RIL_CallForwardInfo*)data;
+
+    if (info->status == 3 && info->number == NULL) {
+        RLOGE("Invalid arguments in requestSetCallForward");
+        RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
+        return;
+    }
+
+    if (asprintf(&cmd, "AT+CCFCU=%d,%d,%d,%d,\"%s\",%d", info->reason,
+            info->status, 2, info->toa, info->number ? info->number : "",
+            info->serviceClass)
+        < 0) {
+        RLOGE("Failed to allocate memory");
+        ril_err = RIL_E_NO_MEMORY;
+        goto on_exit;
+    }
+
     offset += strlen(cmd);
 
-    if (data->serviceClass == 0) {
-        if (data->timeSeconds != 0 && data->status == 3) {
-            snprintf(cmd + offset, sizeof(cmd) - offset, ",\"\",\"\",,%d",
-                data->timeSeconds);
+    if (info->serviceClass == 0) {
+        if (info->timeSeconds != 0 && info->status == 3) {
+            cmd_offset = cmd + offset;
+            if (asprintf(&cmd_offset, ",\"\",\"\",,%d",
+                    info->timeSeconds)
+                < 0) {
+                RLOGE("Failed to allocate memory");
+                ril_err = RIL_E_NO_MEMORY;
+                goto on_exit;
+            }
         }
     } else {
-        if (data->timeSeconds != 0 && data->status == 3) {
-            snprintf(cmd + offset, sizeof(cmd) - offset, ",\"\",\"\",,%d",
-                data->timeSeconds);
+        if (info->timeSeconds != 0 && info->status == 3) {
+            cmd_offset = cmd + offset;
+            if (asprintf(&cmd_offset, ",\"\",\"\",,%d", info->timeSeconds) < 0) {
+                RLOGE("Failed to allocate memory");
+                ril_err = RIL_E_NO_MEMORY;
+                goto on_exit;
+            }
         } else {
-            strlcat(cmd, ",\"\"", sizeof(cmd) - offset);
+            if (asprintf(&cmd, ",\"\"") < 0) {
+                RLOGE("Failed to allocate memory");
+                ril_err = RIL_E_NO_MEMORY;
+                goto on_exit;
+            }
         }
     }
 
     err = at_send_command_multiline(cmd, "+CCFCU:", &p_response);
-    if (err < 0 || p_response->success == 0) {
+    if (err != AT_ERROR_OK || !p_response || p_response->success != AT_OK) {
         RLOGE("Failure occurred in sending %s due to: %s", cmd, at_io_err_str(err));
-        goto error;
+        ril_err = RIL_E_GENERIC_FAILURE;
+        goto on_exit;
     }
 
-    RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
-    at_response_free(p_response);
-    return;
+    RLOGD("requestSetCallForward reason = %d, status = %d, number = %s, toa = %d, class = %d",
+        info->reason, info->status, info->number, info->toa, info->serviceClass);
 
-error:
-    RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
+on_exit:
+    RIL_onRequestComplete(t, ril_err, NULL, 0);
     at_response_free(p_response);
+    free(cmd);
 }
 
 static void requestSetClir(void* data, size_t datalen, RIL_Token t)
 {
     (void)datalen;
 
-    int err = -1;
-    int n = ((int*)data)[0];
-    char cmd[64] = { 0 };
     ATResponse* p_response = NULL;
+    RIL_Errno ril_err = RIL_E_SUCCESS;
+    int err = AT_ERROR_GENERIC;
+    char* cmd = NULL;
+    int clir;
 
-    snprintf(cmd, sizeof(cmd), "AT+CLIR=%d", n);
-    err = at_send_command(cmd, &p_response);
-    if (err < 0 || p_response->success == 0) {
-        RLOGE("Failure occurred in sending %s due to: %s", cmd, at_io_err_str(err));
+    if (data == NULL) {
+        RLOGE("requestSetClir data is null!");
         RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
-    } else {
-        RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
+        return;
     }
 
+    clir = ((int*)data)[0];
+
+    if (clir < 0 || clir > 2) {
+        RLOGE("clir is invalid!");
+        RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
+        return;
+    }
+
+    if (asprintf(&cmd, "AT+CLIR=%d", clir) < 0) {
+        RLOGE("Failed to allocate memory");
+        ril_err = RIL_E_GENERIC_FAILURE;
+        goto on_exit;
+    }
+
+    err = at_send_command(cmd, &p_response);
+    if (err != AT_ERROR_OK || !p_response || p_response->success != AT_OK) {
+        RLOGE("Failure occurred in sending %s due to: %s", cmd, at_io_err_str(err));
+        ril_err = RIL_E_GENERIC_FAILURE;
+        goto on_exit;
+    }
+
+on_exit:
+    RIL_onRequestComplete(t, ril_err, NULL, 0);
     at_response_free(p_response);
+    free(cmd);
 }
 
 static void requestQueryClir(void* data, size_t datalen, RIL_Token t)
@@ -869,23 +1023,29 @@ static void requestQueryClir(void* data, size_t datalen, RIL_Token t)
     }
 
     err = at_send_command_singleline("AT+CLIR?", "+CLIR:", &p_response);
-    if (err < 0 || p_response->success == 0) {
+    if (err != AT_ERROR_OK || !p_response || p_response->success != AT_OK) {
         RLOGE("Failure occurred in sending %s due to: %s", "AT+CLIR?", at_io_err_str(err));
         goto error;
     }
 
     line = p_response->p_intermediates->line;
     err = at_tok_start(&line);
-    if (err < 0)
+    if (err < 0) {
+        RLOGE("Failed to parse line in %s", __func__);
         goto error;
+    }
 
     err = at_tok_nextint(&line, &response[0]);
-    if (err < 0)
+    if (err < 0) {
+        RLOGE("Failed to parse response[0] in %s", __func__);
         goto error;
+    }
 
     err = at_tok_nextint(&line, &response[1]);
-    if (err < 0)
+    if (err < 0) {
+        RLOGE("Failed to parse response[0] in %s", __func__);
         goto error;
+    }
 
     RIL_onRequestComplete(t, RIL_E_SUCCESS, response, sizeof(response));
     at_response_free(p_response);
@@ -913,23 +1073,29 @@ static void requestQueryClip(void* data, size_t datalen, RIL_Token t)
     }
 
     err = at_send_command_singleline("AT+CLIP?", "+CLIP:", &p_response);
-    if (err < 0 || p_response->success == 0) {
+    if (err != AT_ERROR_OK || !p_response || p_response->success != AT_OK) {
         RLOGE("Failure occurred in sending %s due to: %s", "AT+CLIP?", at_io_err_str(err));
         goto error;
     }
 
     line = p_response->p_intermediates->line;
     err = at_tok_start(&line);
-    if (err < 0)
+    if (err < 0) {
+        RLOGE("Failed to parse line in %s", __func__);
         goto error;
+    }
 
     err = at_tok_nextint(&line, &skip);
-    if (err < 0)
+    if (err < 0) {
+        RLOGE("Failed to parse integer in %s", __func__);
         goto error;
+    }
 
     err = at_tok_nextint(&line, &response);
-    if (err < 0)
+    if (err < 0) {
+        RLOGE("Failed to parse clip in %s", __func__);
         goto error;
+    }
 
     RIL_onRequestComplete(t, RIL_E_SUCCESS, &response, sizeof(response));
     at_response_free(p_response);
@@ -951,20 +1117,30 @@ static void requestGetMute(void* data, size_t datalen, RIL_Token t)
     ATResponse* p_response = NULL;
 
     err = at_send_command_singleline("AT+CMUT?", "+CMUT:", &p_response);
-    if (err < 0 || p_response->success) {
+    if (err != AT_ERROR_OK || !p_response || p_response->success != AT_OK) {
         RLOGE("Failure occurred in sending %s due to: %s", "AT+CMUT?", at_io_err_str(err));
-        goto done;
+        goto error;
     }
 
     line = p_response->p_intermediates->line;
     err = at_tok_start(&line);
-    if (err < 0)
-        goto done;
+    if (err < 0) {
+        RLOGE("Failed to parse line in %s", __func__);
+        goto error;
+    }
 
-    at_tok_nextint(&line, &muteResponse);
+    err = at_tok_nextint(&line, &muteResponse);
+    if (err < 0) {
+        RLOGE("Failed to parse mute in %s", __func__);
+        goto error;
+    }
 
-done:
     RIL_onRequestComplete(t, RIL_E_SUCCESS, &muteResponse, sizeof(muteResponse));
+    at_response_free(p_response);
+    return;
+
+error:
+    RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
     at_response_free(p_response);
 }
 
@@ -972,21 +1148,38 @@ static void requestSetMute(void* data, size_t datalen, RIL_Token t)
 {
     (void)datalen;
 
-    int err = -1;
-    char cmd[64] = { 0 };
     ATResponse* p_response = NULL;
+    RIL_Errno ril_err = RIL_E_SUCCESS;
+    int err = AT_ERROR_GENERIC;
+    char* cmd = NULL;
+    int mute;
 
-    snprintf(cmd, sizeof(cmd), "AT+CMUT=%d", ((int*)data)[0]);
-    err = at_send_command(cmd, &p_response);
-
-    if (err < 0 || p_response->success) {
-        RLOGE("Failure occurred in sending %s due to: %s", cmd, at_io_err_str(err));
+    if (data == NULL) {
+        RLOGE("requestSetMute data is null!");
         RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
-    } else {
-        RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
+        return;
     }
 
+    mute = ((int*)data)[0];
+
+    if (asprintf(&cmd, "AT+CMUT=%d", mute) < 0) {
+        RLOGE("Failed to allocate memory");
+        ril_err = RIL_E_NO_MEMORY;
+        goto on_exit;
+    }
+
+    err = at_send_command(cmd, &p_response);
+
+    if (err != AT_ERROR_OK || !p_response || p_response->success != AT_OK) {
+        RLOGE("Failure occurred in sending %s due to: %s", cmd, at_io_err_str(err));
+        ril_err = RIL_E_GENERIC_FAILURE;
+        goto on_exit;
+    }
+
+on_exit:
+    RIL_onRequestComplete(t, ril_err, NULL, 0);
     at_response_free(p_response);
+    free(cmd);
 }
 
 static void requestExitEmergencyMode(void* data, size_t datalen, RIL_Token t)
@@ -994,18 +1187,22 @@ static void requestExitEmergencyMode(void* data, size_t datalen, RIL_Token t)
     (void)data;
     (void)datalen;
 
-    int err;
+    int err = AT_ERROR_GENERIC;
     ATResponse* p_response = NULL;
 
     err = at_send_command("AT+WSOS=0", &p_response);
-
-    if (err < 0 || p_response->success == 0) {
+    if (err != AT_ERROR_OK || !p_response || p_response->success != AT_OK) {
         RLOGE("Failure occurred in sending %s due to: %s", "AT+WSOS=0", at_io_err_str(err));
-        RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
-        return;
+        goto error;
     }
 
     RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
+    at_response_free(p_response);
+    return;
+
+error:
+    RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
+    at_response_free(p_response);
 }
 
 static void requestAnswer(void* data, size_t datalen, RIL_Token t)
@@ -1013,31 +1210,70 @@ static void requestAnswer(void* data, size_t datalen, RIL_Token t)
     (void)data;
     (void)datalen;
 
-    at_send_command("ATA", NULL);
+    int err = AT_ERROR_GENERIC;
+    ATResponse* p_response = NULL;
 
-#ifdef WORKAROUND_ERRONEOUS_ANSWER
-    s_expectAnswer = 1;
-#endif /* WORKAROUND_ERRONEOUS_ANSWER */
+    err = at_send_command("ATA", &p_response);
+    if (err != AT_ERROR_OK || !p_response || p_response->success != AT_OK) {
+        RLOGE("Failure occurred in sending %s due to: %s", "ATA", at_io_err_str(err));
+        goto error;
+    }
+
     // Success or failure is ignored by the upper layer here.
     // It will call GET_CURRENT_CALLS and determine success that way.
     RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
+    at_response_free(p_response);
+    return;
+
+error:
+    RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
+    at_response_free(p_response);
 }
 
 static void requestSeparateConnection(void* data, size_t datalen, RIL_Token t)
 {
-    char cmd[12];
-    int party = ((int*)data)[0];
+    (void)datalen;
+
+    ATResponse* p_response = NULL;
+    RIL_Errno ril_err = RIL_E_SUCCESS;
+    int err = AT_ERROR_GENERIC;
+    char* cmd = NULL;
+    int party;
+
+    if (data == NULL) {
+        RLOGE("requestSeparateConnection data is null!");
+        RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
+        return;
+    }
+
+    party = ((int*)data)[0];
 
     // Make sure that party is in a valid range.
     // (Note: The Telephony middle layer imposes a range of 1 to 7.
     // It's sufficient for us to just make sure it's single digit.)
-    if (party > 0 && party < 10) {
-        sprintf(cmd, "AT+CHLD=2%d", party);
-        at_send_command(cmd, NULL);
-        RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
-    } else {
+    if (party <= 0 || party >= 10) {
+        RLOGE("requestSeparateConnection party is invalid!");
         RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
+        return;
     }
+
+    if (asprintf(&cmd, "AT+CHLD=2%d", party) < 0) {
+        RLOGE("Failed to allocate memory");
+        ril_err = RIL_E_NO_MEMORY;
+        goto on_exit;
+    }
+
+    err = at_send_command(cmd, &p_response);
+    if (err != AT_ERROR_OK || !p_response || p_response->success != AT_OK) {
+        RLOGE("Failure occurred in sending %s due to: %s", cmd, at_io_err_str(err));
+        ril_err = RIL_E_GENERIC_FAILURE;
+        goto on_exit;
+    }
+
+on_exit:
+    RIL_onRequestComplete(t, ril_err, NULL, 0);
+    at_response_free(p_response);
+    free(cmd);
 }
 
 static void requestExitEmergencyCallbackMode(void* data, size_t datalen, RIL_Token t)
