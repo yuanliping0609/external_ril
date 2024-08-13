@@ -1185,9 +1185,6 @@ bool try_handle_unsol_net(const char* s)
         RLOGI("Receive EPS network state change URC");
         RIL_onUnsolicitedResponse(
             RIL_UNSOL_RESPONSE_VOICE_NETWORK_STATE_CHANGED, NULL, 0);
-#ifdef WORKAROUND_FAKE_CGEV
-        RIL_requestTimedCallback(onDataCallListChanged, NULL, NULL);
-#endif /* WORKAROUND_FAKE_CGEV */
         ret = true;
     }
 #define CGFPCCFG "%CGFPCCFG:"

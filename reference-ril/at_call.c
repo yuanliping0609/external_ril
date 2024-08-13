@@ -1411,10 +1411,6 @@ bool try_handle_unsol_call(const char* s)
         || strStartsWith(s, "ALERTING")) {
         RLOGI("Receive call state changed URC");
         RIL_onUnsolicitedResponse(RIL_UNSOL_RESPONSE_CALL_STATE_CHANGED, NULL, 0);
-#ifdef WORKAROUND_FAKE_CGEV
-        RIL_requestTimedCallback(onDataCallListChanged, NULL, NULL); // TODO use new function
-#endif /* WORKAROUND_FAKE_CGEV */
-
         ret = true;
     } else if (strStartsWith(s, "HOLD")) {
         RLOGI("Receive supplementary service URC(Remote HOLD)");

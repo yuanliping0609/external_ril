@@ -255,9 +255,10 @@ static void requestOrSendDataCallList(int cid, RIL_Token* t)
     int n = 0;
     char* out = NULL;
     const char* radioInterfaceName = getRadioInterfaceName();
+    RIL_Errno ril_err = RIL_E_SUCCESS;
 
     err = at_send_command_multiline("AT+CGACT?", "+CGACT:", &p_response);
-    if (err != 0 || p_response->success == 0) {
+    if (err != AT_ERROR_OK || !p_response || p_response->success != AT_OK) {
         if (t != NULL) {
             RLOGE("Failure occurred in sending %s due to: %s", "AT+CGACT?", at_io_err_str(err));
             RIL_onRequestComplete(*t, RIL_E_GENERIC_FAILURE, NULL, 0);
@@ -294,16 +295,25 @@ static void requestOrSendDataCallList(int cid, RIL_Token* t)
         char* line = p_cur->line;
 
         err = at_tok_start(&line);
-        if (err < 0)
+        if (err < 0) {
+            RLOGE("Failed to parse line in %s", __func__);
+            ril_err = RIL_E_GENERIC_FAILURE;
             goto error;
+        }
 
         err = at_tok_nextint(&line, &response->cid);
-        if (err < 0)
+        if (err < 0) {
+            RLOGE("Failed to parse cid in %s", __func__);
+            ril_err = RIL_E_GENERIC_FAILURE;
             goto error;
+        }
 
         err = at_tok_nextint(&line, &response->active);
-        if (err < 0)
+        if (err < 0) {
+            RLOGE("Failed to parse active in %s", __func__);
+            ril_err = RIL_E_GENERIC_FAILURE;
             goto error;
+        }
 
         response++;
     }
@@ -311,7 +321,7 @@ static void requestOrSendDataCallList(int cid, RIL_Token* t)
     at_response_free(p_response);
 
     err = at_send_command_multiline("AT+CGDCONT?", "+CGDCONT:", &p_response);
-    if (err != 0 || p_response->success == 0) {
+    if (err != AT_ERROR_OK || !p_response || p_response->success != AT_OK) {
         if (t != NULL) {
             RLOGE("Failure occurred in sending %s due to: %s", "AT+CGDCONT?", at_io_err_str(err));
             RIL_onRequestComplete(*t, RIL_E_GENERIC_FAILURE, NULL, 0);
@@ -327,12 +337,18 @@ static void requestOrSendDataCallList(int cid, RIL_Token* t)
         int ncid;
 
         err = at_tok_start(&line);
-        if (err < 0)
+        if (err < 0) {
+            RLOGE("Failed to parse line in %s", __func__);
+            ril_err = RIL_E_GENERIC_FAILURE;
             goto error;
+        }
 
         err = at_tok_nextint(&line, &ncid);
-        if (err < 0)
+        if (err < 0) {
+            RLOGE("Failed to parse line in %s", __func__);
+            ril_err = RIL_E_GENERIC_FAILURE;
             goto error;
+        }
 
         if (cid != ncid)
             continue;
@@ -343,8 +359,11 @@ static void requestOrSendDataCallList(int cid, RIL_Token* t)
 
         // type
         err = at_tok_nextstr(&line, &out);
-        if (err < 0)
+        if (err < 0) {
+            RLOGE("Failed to parse type in %s", __func__);
+            ril_err = RIL_E_GENERIC_FAILURE;
             goto error;
+        }
 
         int type_size = strlen(out) + 1;
         responses[i].type = alloca(type_size);
@@ -352,16 +371,22 @@ static void requestOrSendDataCallList(int cid, RIL_Token* t)
 
         // APN ignored for v5
         err = at_tok_nextstr(&line, &out);
-        if (err < 0)
+        if (err < 0) {
+            RLOGE("Failed to parse apn in %s", __func__);
+            ril_err = RIL_E_GENERIC_FAILURE;
             goto error;
+        }
 
         int ifname_size = strlen(radioInterfaceName) + 1;
         responses[i].ifname = alloca(ifname_size);
         strlcpy(responses[i].ifname, radioInterfaceName, ifname_size);
 
         err = at_tok_nextstr(&line, &out);
-        if (err < 0)
+        if (err < 0) {
+            RLOGE("Failed to parse address in %s", __func__);
+            ril_err = RIL_E_GENERIC_FAILURE;
             goto error;
+        }
 
         int addresses_size = strlen(out) + 1;
         responses[i].addresses = alloca(addresses_size);
@@ -392,11 +417,18 @@ static void requestOrSendDataCallList(int cid, RIL_Token* t)
     at_response_free(p_response);
     p_response = NULL;
 
-    char cmd[64] = { 0 };
-    snprintf(cmd, sizeof(cmd), "AT+CGCONTRDP=%d", cid);
+    char* cmd = NULL;
+
+    if (asprintf(&cmd, "AT+CGCONTRDP=%d", cid) < 0) {
+        RLOGE("Failed to allocate memory");
+        ril_err = RIL_E_NO_MEMORY;
+        goto error;
+    }
+
     err = at_send_command_singleline(cmd, "+CGCONTRDP:", &p_response);
-    if (err < 0 || p_response->success == 0) {
+    if (err != AT_ERROR_OK || !p_response || p_response->success != AT_OK) {
         RLOGE("Failure occurred in sending %s due to: %s", cmd, at_io_err_str(err));
+        ril_err = RIL_E_GENERIC_FAILURE;
         goto error;
     }
 
@@ -406,56 +438,83 @@ static void requestOrSendDataCallList(int cid, RIL_Token* t)
 
     int ncid = -1;
     err = at_tok_start(&input);
-    if (err < 0)
+    if (err < 0) {
+        RLOGE("Failed to parse line in %s", __func__);
+        ril_err = RIL_E_GENERIC_FAILURE;
         goto error;
+    }
 
     err = at_tok_nextint(&input, &ncid); // cid
-    if (err < 0)
+    if (err < 0) {
+        RLOGE("Failed to parse ncid in %s", __func__);
+        ril_err = RIL_E_GENERIC_FAILURE;
         goto error;
+    }
 
-    if (cid != ncid)
+    if (cid != ncid) {
+        RLOGE("cid is error");
+        ril_err = RIL_E_GENERIC_FAILURE;
         goto error;
+    }
 
     i = ncid - 1;
 
     err = at_tok_nextint(&input, &skip); // bearer_id
-    if (err < 0)
+    if (err < 0) {
+        RLOGE("Failed to parse bearer_id in %s", __func__);
+        ril_err = RIL_E_GENERIC_FAILURE;
         goto error;
+    }
 
     err = at_tok_nextstr(&input, &sskip); // apn
-    if (err < 0)
+    if (err < 0) {
+        RLOGE("Failed to parse apn in %s", __func__);
+        ril_err = RIL_E_GENERIC_FAILURE;
         goto error;
+    }
 
     err = at_tok_nextstr(&input, &sskip); // local_addr_and_subnet_mask
-    if (err < 0)
+    if (err < 0) {
+        RLOGE("Failed to parse local_addr_and_subnet_mask in %s", __func__);
+        ril_err = RIL_E_GENERIC_FAILURE;
         goto error;
+    }
 
     err = at_tok_nextstr(&input, &responses[i].gateways); // gw_addr
-    if (err < 0)
+    if (err < 0) {
+        RLOGE("Failed to parse gw_addr in %s", __func__);
+        ril_err = RIL_E_GENERIC_FAILURE;
         goto error;
+    }
 
     set_Gw_Addr(responses[i].gateways, radioInterfaceName);
     err = at_tok_nextstr(&input, &responses[i].dnses); // dns_prim_addr
-    if (err < 0)
+    if (err < 0) {
+        RLOGE("Failed to parse dns in %s", __func__);
+        ril_err = RIL_E_GENERIC_FAILURE;
         goto error;
+    }
 
     if (t != NULL)
-        RIL_onRequestComplete(*t, RIL_E_SUCCESS, &responses[i],
+        RIL_onRequestComplete(*t, ril_err, &responses[i],
             sizeof(RIL_Data_Call_Response_v11));
     else
         RIL_onUnsolicitedResponse(RIL_UNSOL_DATA_CALL_LIST_CHANGED,
             responses, n * sizeof(RIL_Data_Call_Response_v11));
 
     at_response_free(p_response);
+    free(cmd);
+
     return;
 
 error:
     if (t != NULL)
-        RIL_onRequestComplete(*t, RIL_E_GENERIC_FAILURE, NULL, 0);
+        RIL_onRequestComplete(*t, ril_err, NULL, 0);
     else
         RIL_onUnsolicitedResponse(RIL_UNSOL_DATA_CALL_LIST_CHANGED, NULL, 0);
 
     at_response_free(p_response);
+    free(cmd);
 }
 
 static void putPDP(int cid)
@@ -482,7 +541,9 @@ static void requestDataRegistrationState(void* data, size_t datalen, RIL_Token t
     char* line;
     int i = 0, j, numElements = 0;
     int count = 3;
-    int type, startfrom;
+    int type = 0;
+    int startfrom = 0;
+    RIL_Errno ril_err = RIL_E_SUCCESS;
 
     cmd = "AT+CGREG?";
     prefix = "+CGREG:";
@@ -494,19 +555,27 @@ static void requestDataRegistrationState(void* data, size_t datalen, RIL_Token t
 
     err = at_send_command_singleline(cmd, prefix, &p_response);
 
-    if (err < 0 || !p_response->success) {
+    if (err != AT_ERROR_OK || !p_response->success || p_response->success != AT_OK) {
         RLOGE("Failure occurred in sending %s due to: %s", cmd, at_io_err_str(err));
+        ril_err = RIL_E_GENERIC_FAILURE;
         goto error;
     }
 
     line = p_response->p_intermediates->line;
 
-    if (parseRegistrationState(line, &type, &count, &registration))
+    if (parseRegistrationState(line, &type, &count, &registration)) {
+        RLOGE("Failure to parse registration state");
+        ril_err = RIL_E_GENERIC_FAILURE;
         goto error;
+    }
 
     responseStr = malloc(numElements * sizeof(char*));
-    if (!responseStr)
+    if (!responseStr) {
+        RLOGE("Failed to allocate memory");
+        ril_err = RIL_E_NO_MEMORY;
         goto error;
+    }
+
     memset(responseStr, 0, numElements * sizeof(char*));
 
     /**
@@ -518,23 +587,44 @@ static void requestDataRegistrationState(void* data, size_t datalen, RIL_Token t
         RLOGD("registration state type: 3GPP2");
         // TODO: Query modem
         startfrom = 3;
-        asprintf(&responseStr[3], "8"); // Available data radio technology
+        // Available data radio technology
+        if (asprintf(&responseStr[3], "8") < 0) {
+            RLOGE("Failed to allocate memory");
+            ril_err = RIL_E_NO_MEMORY;
+            goto error;
+        }
     } else { // type == RADIO_TECH_3GPP
         RLOGD("registration state type: 3GPP");
         startfrom = 0;
 
         if (count > 1) {
-            asprintf(&responseStr[1], "%x", registration[1]);
+            if (asprintf(&responseStr[1], "%x", registration[1]) < 0) {
+                RLOGE("Failed to allocate memory");
+                ril_err = RIL_E_NO_MEMORY;
+                goto error;
+            }
         }
         if (count > 2) {
-            asprintf(&responseStr[2], "%x", registration[2]);
+            if (asprintf(&responseStr[2], "%x", registration[2]) < 0) {
+                RLOGE("Failed to allocate memory");
+                ril_err = RIL_E_NO_MEMORY;
+                goto error;
+            }
         }
         if (count > 3) {
-            asprintf(&responseStr[3], "%d", mapNetworkRegistrationResponse(registration[3]));
+            if (asprintf(&responseStr[3], "%d", mapNetworkRegistrationResponse(registration[3])) < 0) {
+                RLOGE("Failed to allocate memory");
+                ril_err = RIL_E_NO_MEMORY;
+                goto error;
+            }
         }
     }
 
-    asprintf(&responseStr[0], "%d", registration[0]);
+    if (asprintf(&responseStr[0], "%d", registration[0]) < 0) {
+        RLOGE("Failed to allocate memory");
+        ril_err = RIL_E_NO_MEMORY;
+        goto error;
+    }
 
     /**
      * Optional bytes for DATA_REGISTRATION_STATE request
@@ -543,23 +633,43 @@ static void requestDataRegistrationState(void* data, size_t datalen, RIL_Token t
      */
     // asprintf(&responseStr[4], "3");
     // asprintf(&responseStr[5], "1");
-    asprintf(&responseStr[11], "%d", getMcc());
-    asprintf(&responseStr[12], "%d", getMnc());
+    if (asprintf(&responseStr[11], "%d", getMcc()) < 0) {
+        RLOGE("Failed to allocate memory");
+        ril_err = RIL_E_NO_MEMORY;
+        goto error;
+    }
+
+    if (asprintf(&responseStr[12], "%d", getMnc()) < 0) {
+        RLOGE("Failed to allocate memory");
+        ril_err = RIL_E_NO_MEMORY;
+        goto error;
+    }
 
     if (getMncLength() == 2) {
-        asprintf(&responseStr[13], "%03d%02d", getMcc(), getMnc());
+        if (asprintf(&responseStr[13], "%03d%02d", getMcc(), getMnc()) < 0) {
+            RLOGE("Failed to allocate memory");
+            ril_err = RIL_E_NO_MEMORY;
+            goto error;
+        }
     } else {
-        asprintf(&responseStr[13], "%03d%03d", getMcc(), getMnc());
+        if (asprintf(&responseStr[13], "%03d%03d", getMcc(), getMnc()) < 0) {
+            RLOGE("Failed to allocate memory");
+            ril_err = RIL_E_NO_MEMORY;
+            goto error;
+        }
     }
 
     for (j = startfrom; j < numElements; j++) {
-        if (!responseStr[i])
+        if (!responseStr[i]) {
+            RLOGE("Failed to allocate memory");
+            ril_err = RIL_E_NO_MEMORY;
             goto error;
+        }
     }
 
     free(registration);
     registration = NULL;
-    RIL_onRequestComplete(t, RIL_E_SUCCESS, responseStr, numElements * sizeof(char*));
+    RIL_onRequestComplete(t, ril_err, responseStr, numElements * sizeof(char*));
 
     for (j = 0; j < numElements; j++) {
         free(responseStr[j]);
@@ -588,7 +698,7 @@ error:
     }
 
     RLOGE("requestDataRegistrationState must never return an error when radio is on");
-    RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
+    RIL_onRequestComplete(t, ril_err, NULL, 0);
     at_response_free(p_response);
 }
 
@@ -614,6 +724,13 @@ static void requestSetupDataCall(void* data, size_t datalen, RIL_Token t)
     int err = -1;
     int cid = -1;
     ATResponse* p_response = NULL;
+    RIL_Errno ril_err = RIL_E_SUCCESS;
+
+    if (data == NULL) {
+        RLOGE("requestSetupDataCall data is null!");
+        RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
+        return;
+    }
 
     apn = ((const char**)data)[2];
 
@@ -631,7 +748,12 @@ static void requestSetupDataCall(void* data, size_t datalen, RIL_Token t)
     if (fd >= 0) { /* the device doesn't exist on the emulator */
 
         RLOGD("opened the qmi device\n");
-        asprintf(&cmd, "up:%s", apn);
+        if (asprintf(&cmd, "up:%s", apn) < 0) {
+            RLOGE("Failed to allocate memory");
+            ril_err = RIL_E_NO_MEMORY;
+            goto error;
+        }
+
         len = strlen(cmd);
 
         while (cur < len) {
@@ -641,6 +763,7 @@ static void requestSetupDataCall(void* data, size_t datalen, RIL_Token t)
 
             if (written < 0) {
                 RLOGE("### ERROR writing to /dev/qmi");
+                ril_err = RIL_E_GENERIC_FAILURE;
                 close(fd);
                 goto error;
             }
@@ -658,6 +781,7 @@ static void requestSetupDataCall(void* data, size_t datalen, RIL_Token t)
 
             if (rlen < 0) {
                 RLOGE("### ERROR reading from /dev/qmi");
+                ril_err = RIL_E_GENERIC_FAILURE;
                 close(fd);
                 goto error;
             } else {
@@ -670,6 +794,7 @@ static void requestSetupDataCall(void* data, size_t datalen, RIL_Token t)
 
         if (retry == 0) {
             RLOGE("### Failed to get data connection up\n");
+            ril_err = RIL_E_GENERIC_FAILURE;
             goto error;
         }
 
@@ -677,12 +802,17 @@ static void requestSetupDataCall(void* data, size_t datalen, RIL_Token t)
 
         RLOGD("netcfg rmnet0 dhcp: status %d\n", qmistatus);
 
-        if (qmistatus < 0)
+        if (qmistatus < 0) {
+            RLOGE("qmistatus < 0");
+            ril_err = RIL_E_GENERIC_FAILURE;
             goto error;
+        }
 
     } else {
         const char* radioInterfaceName = getRadioInterfaceName();
         if (setInterfaceState(radioInterfaceName, kInterfaceUp) != RIL_E_SUCCESS) {
+            RLOGE("set network interface state error");
+            ril_err = RIL_E_GENERIC_FAILURE;
             goto error;
         }
 
@@ -711,49 +841,87 @@ static void requestSetupDataCall(void* data, size_t datalen, RIL_Token t)
             return;
         }
 
-        asprintf(&cmd, "AT+CGDCONT=%d,\"%s\",\"%s\",,0,0", cid, pdp_type, apn);
+        if (asprintf(&cmd, "AT+CGDCONT=%d,\"%s\",\"%s\",,0,0", cid, pdp_type, apn) < 0) {
+            RLOGE("Failed to allocate memory");
+            ril_err = RIL_E_NO_MEMORY;
+            goto error;
+        }
+
         // FIXME check for error here
-        err = at_send_command(cmd, NULL);
-        free(cmd);
+        err = at_send_command(cmd, &p_response);
+        if (err != AT_ERROR_OK || !p_response || p_response->success != AT_OK) {
+            RLOGE("Failure occurred in sending %s due to: %s", cmd, at_io_err_str(err));
+            ril_err = RIL_E_GENERIC_FAILURE;
+            goto error;
+        }
 
         // Set required QoS params to default
-        err = at_send_command("AT+CGQREQ=1", NULL);
+        err = at_send_command("AT+CGQREQ=1", &p_response);
+        if (err != AT_ERROR_OK || !p_response || p_response->success != AT_OK) {
+            RLOGE("Failure occurred in sending %s due to: %s", cmd, at_io_err_str(err));
+            ril_err = RIL_E_GENERIC_FAILURE;
+            goto error;
+        }
 
         // Set minimum QoS params to default
-        err = at_send_command("AT+CGQMIN=1", NULL);
+        err = at_send_command("AT+CGQMIN=1", &p_response);
+        if (err != AT_ERROR_OK || !p_response || p_response->success != AT_OK) {
+            RLOGE("Failure occurred in sending %s due to: %s", cmd, at_io_err_str(err));
+            ril_err = RIL_E_GENERIC_FAILURE;
+            goto error;
+        }
 
         // packet-domain event reporting
-        err = at_send_command("AT+CGEREP=1,0", NULL);
+        err = at_send_command("AT+CGEREP=1,0", &p_response);
+        if (err != AT_ERROR_OK || !p_response || p_response->success != AT_OK) {
+            RLOGE("Failure occurred in sending %s due to: %s", cmd, at_io_err_str(err));
+            ril_err = RIL_E_GENERIC_FAILURE;
+            goto error;
+        }
 
         // Hangup anything that's happening there now
-        err = at_send_command("AT+CGACT=1,0", NULL);
+        err = at_send_command("AT+CGACT=1,0", &p_response);
+        if (err != AT_ERROR_OK || !p_response || p_response->success != AT_OK) {
+            RLOGE("Failure occurred in sending %s due to: %s", cmd, at_io_err_str(err));
+            ril_err = RIL_E_GENERIC_FAILURE;
+            goto error;
+        }
 
         // Start data on PDP context 1
         err = at_send_command("ATD*99***1#", &p_response);
-
-        if (err < 0 || p_response->success == 0) {
-            RLOGE("Failure occurred in sending AT command due to: %s", at_io_err_str(err));
+        if (err != AT_ERROR_OK || !p_response || p_response->success != AT_OK) {
+            RLOGE("Failure occurred in sending %s due to: %s", cmd, at_io_err_str(err));
+            ril_err = RIL_E_GENERIC_FAILURE;
             goto error;
         }
     }
 
     requestOrSendDataCallList(cid, &t);
     at_response_free(p_response);
+    free(cmd);
 
     return;
 error:
-    RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
+    RIL_onRequestComplete(t, ril_err, NULL, 0);
     at_response_free(p_response);
+    free(cmd);
 }
 
 static void requestDeactivateDataCall(void* data, size_t datalen, RIL_Token t)
 {
     (void)datalen;
 
+    if (data == NULL) {
+        RLOGE("requestDeactivateDataCall data is null");
+        RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
+        return;
+    }
+
     const char* p_cid = ((const char**)data)[0];
     int cid = p_cid ? atoi(p_cid) : -1;
     RIL_Errno rilErrno = RIL_E_GENERIC_FAILURE;
     if (cid < 1 || cid > MAX_PDP) {
+        RLOGE("Invalid cid found");
         RIL_onRequestComplete(t, rilErrno, NULL, 0);
         return;
     }
@@ -808,10 +976,6 @@ bool try_handle_unsol_data(const char* s)
          */
         /* can't issue AT commands here -- call on main thread */
         RIL_requestTimedCallback(onDataCallListChanged, NULL, NULL);
-#ifdef WORKAROUND_FAKE_CGEV
-    } else if (strStartsWith(s, "+CME ERROR: 150")) {
-        RIL_requestTimedCallback(onDataCallListChanged, NULL, NULL);
-#endif /* WORKAROUND_FAKE_CGEV */
         ret = true;
     } else {
         RLOGI("Can't match any unsol data handlers");
