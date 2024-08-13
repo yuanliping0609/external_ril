@@ -43,23 +43,28 @@ static int s_modem_enabled = 0;
 static void requestRadioPower(void* data, size_t datalen, RIL_Token t)
 {
     int onOff;
-
     int err;
     ATResponse* p_response = NULL;
+
+    if (data == NULL) {
+        RLOGE("requestRadioPower data is null");
+        RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
+        return;
+    }
 
     assert(datalen >= sizeof(int*));
     onOff = ((int*)data)[0];
 
     if (onOff == 0 && getRadioState() != RADIO_STATE_OFF) {
         err = at_send_command("AT+CFUN=0", &p_response);
-        if (err < 0 || p_response->success == 0) {
+        if (err != AT_ERROR_OK || !p_response || p_response->success != AT_OK) {
             RLOGE("Failure occurred in sending %s due to: %s", "AT+CFUN=0", at_io_err_str(err));
             goto error;
         }
         setRadioState(RADIO_STATE_OFF);
     } else if (onOff > 0 && getRadioState() == RADIO_STATE_OFF) {
         err = at_send_command("AT+CFUN=1", &p_response);
-        if (err < 0 || p_response->success == 0) {
+        if (err != AT_ERROR_OK || !p_response || p_response->success != AT_OK) {
             RLOGE("Failure occurred in sending %s due to: %s", "AT+CFUN=1", at_io_err_str(err));
             // Some stacks return an error when there is no SIM,
             // but they really turn the RF portion on
@@ -89,32 +94,37 @@ static void requestBaseBandVersion(void* data, size_t datalen, RIL_Token t)
     (void)datalen;
 
     ATResponse* p_response = NULL;
-    int err;
-    char* line;
-    char* responseStr;
+    RIL_Errno ril_err = RIL_E_SUCCESS;
+    int err = -1;
+    char* line = NULL;
+    char* responseStr = NULL;
 
     err = at_send_command_singleline("AT+CGMR", "+CGMR:", &p_response);
-    if (err < 0 || !p_response->success) {
+    if (err != AT_ERROR_OK || !p_response || p_response->success != AT_OK) {
         RLOGE("Failure occurred in sending %s due to: %s", "AT+CGMR", at_io_err_str(err));
-        goto error;
+        ril_err = RIL_E_GENERIC_FAILURE;
+        goto on_exit;
     }
 
     line = p_response->p_intermediates->line;
 
     err = at_tok_start(&line);
-    if (err < 0)
-        goto error;
+    if (err < 0) {
+        RLOGE("Fail to parse line in %s", __func__);
+        ril_err = RIL_E_GENERIC_FAILURE;
+        goto on_exit;
+    }
 
     err = at_tok_nextstr(&line, &responseStr);
-    if (err < 0)
-        goto error;
+    if (err < 0) {
+        RLOGE("Fail to parse base band version in %s", __func__);
+        ril_err = RIL_E_GENERIC_FAILURE;
+        goto on_exit;
+    }
 
-    RIL_onRequestComplete(t, RIL_E_SUCCESS, responseStr, sizeof(responseStr));
-    at_response_free(p_response);
-    return;
-
-error:
-    RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
+on_exit:
+    RIL_onRequestComplete(t, ril_err, ril_err == RIL_E_SUCCESS ? responseStr : NULL,
+        ril_err == RIL_E_SUCCESS ? sizeof(responseStr) : 0);
     at_response_free(p_response);
 }
 
@@ -135,7 +145,7 @@ static void requestDeviceIdentity(void* data, size_t datalen, RIL_Token t)
     responseStr[3] = ""; // default empty for non-CDMA
 
     err = at_send_command_numeric("AT+CGSN", &p_response);
-    if (err < 0 || p_response->success == 0) {
+    if (err != AT_ERROR_OK || !p_response || p_response->success != AT_OK) {
         RLOGE("Failure occurred in sending %s due to: %s", "AT+CGSN", at_io_err_str(err));
         RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
         return;
@@ -158,29 +168,30 @@ static void unsolicitedRingBackTone(const char* s)
 
     line = p = strdup(s);
     if (!line) {
-        RLOGE("^MRINGTONE: Unable to allocate memory");
+        RLOGE("unsolicitedRingBackTone line is null");
         return;
     }
 
     if (at_tok_start(&p) < 0) {
+        RLOGE("Fail to parse line in %s", __func__);
         free(line);
         return;
     }
 
     if (at_tok_nextint(&p, &cid) < 0) {
-        RLOGE("invalid ^MRINGTONE response: %s", line);
+        RLOGE("Fail to parse cid in %s", __func__);
         free(line);
         return;
     }
 
     if (at_tok_nextint(&p, &action) < 0) {
-        RLOGE("invalid ^MRINGTONE response: %s", line);
+        RLOGE("Fail to parse action in %s", __func__);
         free(line);
         return;
     }
 
     if (at_tok_nextint(&p, &type) < 0) {
-        RLOGE("invalid ^MRINGTONE response: %s", line);
+        RLOGE("Fail to parse tyoe in %s", __func__);
         free(line);
         return;
     }
@@ -195,21 +206,68 @@ static void requestScreenState(void* data, size_t datalen, RIL_Token t)
 {
     (void)datalen;
 
-    int status = *((int*)data);
+    ATResponse* p_response = NULL;
+    RIL_Errno ril_err = RIL_E_SUCCESS;
+    int err = -1;
+    int status;
+
+    if (data == NULL) {
+        RLOGE("requestScreenState data is null");
+        RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
+        return;
+    }
+
+    status = *((int*)data);
 
     if (!status) {
         /* Suspend */
-        at_send_command("AT+CEREG=1", NULL);
-        at_send_command("AT+CREG=1", NULL);
-        at_send_command("AT+CGREG=1", NULL);
+        err = at_send_command("AT+CEREG=1", &p_response);
+        if (err != AT_ERROR_OK || !p_response || p_response->success != AT_OK) {
+            RLOGE("Failure occurred in sending %s due to: %s", "AT+CEREG=1", at_io_err_str(err));
+            ril_err = RIL_E_GENERIC_FAILURE;
+            goto on_exit;
+        }
+
+        err = at_send_command("AT+CREG=1", &p_response);
+        if (err != AT_ERROR_OK || !p_response || p_response->success != AT_OK) {
+            RLOGE("Failure occurred in sending %s due to: %s", "AT+CREG=1", at_io_err_str(err));
+            ril_err = RIL_E_GENERIC_FAILURE;
+            goto on_exit;
+        }
+
+        err = at_send_command("AT+CGREG=1", &p_response);
+        if (err != AT_ERROR_OK || !p_response || p_response->success != AT_OK) {
+            RLOGE("Failure occurred in sending %s due to: %s", "AT+CGREG=1", at_io_err_str(err));
+            ril_err = RIL_E_GENERIC_FAILURE;
+            goto on_exit;
+        }
     } else {
         /* Resume */
-        at_send_command("AT+CEREG=2", NULL);
-        at_send_command("AT+CREG=2", NULL);
-        at_send_command("AT+CGREG=2", NULL);
+        err = at_send_command("AT+CEREG=2", &p_response);
+        if (err != AT_ERROR_OK || !p_response || p_response->success != AT_OK) {
+            RLOGE("Failure occurred in sending %s due to: %s", "AT+CEREG=2", at_io_err_str(err));
+            ril_err = RIL_E_GENERIC_FAILURE;
+            goto on_exit;
+        }
+
+        err = at_send_command("AT+CREG=2", &p_response);
+        if (err != AT_ERROR_OK || !p_response || p_response->success != AT_OK) {
+            RLOGE("Failure occurred in sending %s due to: %s", "AT+CREG=2", at_io_err_str(err));
+            ril_err = RIL_E_GENERIC_FAILURE;
+            goto on_exit;
+        }
+
+        err = at_send_command("AT+CGREG=2", &p_response);
+        if (err != AT_ERROR_OK || !p_response || p_response->success != AT_OK) {
+            RLOGE("Failure occurred in sending %s due to: %s", "AT+CGREG=2", at_io_err_str(err));
+            ril_err = RIL_E_GENERIC_FAILURE;
+            goto on_exit;
+        }
     }
 
-    RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
+on_exit:
+    RIL_onRequestComplete(t, ril_err, NULL, 0);
+    at_response_free(p_response);
 }
 
 static void requestGetModemStatus(void* data, size_t datalen, RIL_Token t)
@@ -248,16 +306,20 @@ static void requestGetIMEI(void* data, size_t datalen, RIL_Token t)
     (void)datalen;
 
     ATResponse* p_response = NULL;
-    int err = at_send_command_numeric("AT+CGSN", &p_response);
+    RIL_Errno ril_err = RIL_E_SUCCESS;
+    int err = -1;
 
-    if (err < 0 || p_response->success == 0) {
+    err = at_send_command_numeric("AT+CGSN", &p_response);
+
+    if (err != AT_ERROR_OK || !p_response || p_response->success != AT_OK) {
         RLOGE("Failure occurred in sending %s due to: %s", "AT+CGSN", at_io_err_str(err));
-        RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
-    } else {
-        RIL_onRequestComplete(t, RIL_E_SUCCESS,
-            p_response->p_intermediates->line, sizeof(char*));
+        ril_err = RIL_E_GENERIC_FAILURE;
+        goto on_exit;
     }
 
+on_exit:
+    RIL_onRequestComplete(t, ril_err, ril_err == RIL_E_SUCCESS ? p_response->p_intermediates->line : NULL,
+        ril_err == RIL_E_SUCCESS ? sizeof(char*) : 0);
     at_response_free(p_response);
 }
 
@@ -298,16 +360,21 @@ static void requestOemHookStrings(void* data, size_t datalen, RIL_Token t)
 
 static void requestEnableModem(void* data, size_t datalen, RIL_Token t)
 {
-    (void)data;
     (void)datalen;
 
     int err;
     ATResponse* p_response = NULL;
 
+    if (data == NULL) {
+        RLOGE("requestEnableModem data is null");
+        RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
+        return;
+    }
+
     s_modem_enabled = *(int*)data;
     if (s_modem_enabled == 0) {
         err = at_send_command("AT+CFUN=0", &p_response);
-        if (err < 0 || p_response->success == 0) {
+        if (err != AT_ERROR_OK || !p_response || p_response->success != AT_OK) {
             RLOGE("Failure occurred in sending %s due to: %s", "AT+CFUN=0", at_io_err_str(err));
             at_response_free(p_response);
             RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
@@ -408,6 +475,7 @@ int parse_technology_response(const char* response, int* current, int32_t* prefe
 
     err = at_tok_nextint(&p, &ct);
     if (err) {
+        RLOGE("Fail to parse ct");
         free(line);
         return -1;
     }
@@ -418,6 +486,7 @@ int parse_technology_response(const char* response, int* current, int32_t* prefe
 
     err = at_tok_nexthexint(&p, &pt);
     if (err) {
+        RLOGE("Fail to parse pt");
         free(line);
         return 1;
     }
@@ -449,20 +518,20 @@ int query_ctec(ModemInfo* mdm, int* current, int32_t* preferred)
 {
     (void)mdm;
 
-    ATResponse* response = NULL;
+    ATResponse* p_response = NULL;
     int err;
     int res;
 
     RLOGD("query_ctec. current: %p, preferred: %p", current, preferred);
-    err = at_send_command_singleline("AT+CTEC?", "+CTEC:", &response);
-    if (!err && response->success) {
-        res = parse_technology_response(response->p_intermediates->line, current, preferred);
-        at_response_free(response);
+    err = at_send_command_singleline("AT+CTEC?", "+CTEC:", &p_response);
+    if (!err && p_response && p_response->success) {
+        res = parse_technology_response(p_response->p_intermediates->line, current, preferred);
+        at_response_free(p_response);
         return res;
     }
 
-    RLOGE("Error executing command: %d. response: %p. status: %d", err, response, response ? response->success : -1);
-    at_response_free(response);
+    RLOGE("Error executing command: %d. response: %p. status: %d", err, p_response, p_response ? p_response->success : -1);
+    at_response_free(p_response);
     return -1;
 }
 
@@ -470,36 +539,39 @@ int query_ctec(ModemInfo* mdm, int* current, int32_t* preferred)
 int isRadioOn(void)
 {
     ATResponse* p_response = NULL;
-    int err;
-    char* line;
-    char ret;
+    RIL_Errno ril_err = RIL_E_SUCCESS;
+    int err = -1;
+    char* line = NULL;
+    char ret = 0;
 
     err = at_send_command_singleline("AT+CFUN?", "+CFUN:", &p_response);
 
-    if (err < 0 || p_response->success == 0) {
+    if (err != AT_ERROR_OK || !p_response || p_response->success == 0) {
         RLOGE("Failure occurred in sending %s due to: %s", "AT+CFUN?", at_io_err_str(err));
+        ril_err = RIL_E_GENERIC_FAILURE;
         // assume radio is off
-        goto error;
+        goto on_exit;
     }
 
     line = p_response->p_intermediates->line;
 
     err = at_tok_start(&line);
-    if (err < 0)
-        goto error;
+    if (err < 0) {
+        RLOGE("Fail to parse line in %s", __func__);
+        ril_err = RIL_E_GENERIC_FAILURE;
+        goto on_exit;
+    }
 
     err = at_tok_nextbool(&line, &ret);
-    if (err < 0)
-        goto error;
+    if (err < 0) {
+        RLOGE("Fail to parse ret in %s", __func__);
+        ril_err = RIL_E_GENERIC_FAILURE;
+        goto on_exit;
+    }
 
+on_exit:
     at_response_free(p_response);
-
-    return (int)ret;
-
-error:
-
-    at_response_free(p_response);
-    return -1;
+    return ril_err == RIL_E_SUCCESS ? ret : -1;
 }
 
 int isModemEnable(void)
