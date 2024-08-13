@@ -535,7 +535,7 @@ bool try_handle_unsol_sms(const char* s, const char* sms_pdu)
             sms_pdu, strlen(sms_pdu));
         ret = true;
     } else {
-        RLOGI("Can't match any unsol sms handlers");
+        RLOGD("Can't match any unsol sms handlers");
     }
 
     return ret;

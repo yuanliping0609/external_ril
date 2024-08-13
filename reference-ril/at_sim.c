@@ -1332,7 +1332,7 @@ void on_request_sim(int request, void* data, size_t datalen, RIL_Token t)
         break;
     }
 
-    RLOGI("On request sim end\n");
+    RLOGI("On request sim end");
 }
 
 bool try_handle_unsol_sim(const char* s)
@@ -1405,7 +1405,7 @@ bool try_handle_unsol_sim(const char* s)
         free(line);
         ret = true;
     } else {
-        RLOGI("Can't match any unsol sim handlers");
+        RLOGD("Can't match any unsol sim handlers");
     }
 
     return ret;

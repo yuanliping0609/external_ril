@@ -466,7 +466,7 @@ static void onUnsolicited(const char* s, const char* sms_pdu)
         return;
     }
 
-    RLOGW("Can't handle AT line: %s", s);
+    RLOGD("Can't handle AT line: %s", s);
 }
 
 /* Called on command or reader thread */

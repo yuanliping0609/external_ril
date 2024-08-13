@@ -1446,7 +1446,7 @@ bool try_handle_unsol_call(const char* s)
         RIL_onUnsolicitedResponse(unsol, NULL, 0);
         ret = true;
     } else {
-        RLOGI("Can't match any unsol call handlers");
+        RLOGD("Can't match any unsol call handlers");
     }
 
     return ret;

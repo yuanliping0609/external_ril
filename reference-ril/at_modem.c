@@ -587,7 +587,7 @@ bool try_handle_unsol_modem(const char* s)
         setRadioState(RADIO_STATE_OFF);
         ret = true;
     } else {
-        RLOGI("Can't match any unsol modem handlers");
+        RLOGD("Can't match any unsol modem handlers");
     }
 
     return ret;

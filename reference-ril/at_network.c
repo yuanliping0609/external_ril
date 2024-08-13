@@ -118,38 +118,42 @@ static void requestQueryNetworkSelectionMode(void* data, size_t datalen, RIL_Tok
     (void)data;
     (void)datalen;
 
-    int err;
+    int err = -1;
     ATResponse* p_response = NULL;
+    RIL_Errno ril_err = RIL_E_SUCCESS;
     int response = 0;
-    char* line;
+    char* line = NULL;
 
     err = at_send_command_singleline("AT+COPS?", "+COPS:", &p_response);
-
-    if (err < 0 || p_response->success == 0) {
-        goto error;
+    if (err != AT_ERROR_OK || !p_response || p_response->success != AT_OK) {
+        RLOGE("Fail to send AT+COPS? due to: %s", at_io_err_str(err));
+        ril_err = RIL_E_GENERIC_FAILURE;
+        goto on_exit;
     }
 
     line = p_response->p_intermediates->line;
     err = at_tok_start(&line);
-
     if (err < 0) {
-        goto error;
+        RLOGE("Fail to parse line in %s", __func__);
+        ril_err = RIL_E_GENERIC_FAILURE;
+        goto on_exit;
     }
 
     err = at_tok_nextint(&line, &response);
-
     if (err < 0) {
-        goto error;
+        RLOGE("Fail to parse mode in %s", __func__);
+        ril_err = RIL_E_GENERIC_FAILURE;
+        goto on_exit;
     }
 
-    RIL_onRequestComplete(t, RIL_E_SUCCESS, &response, sizeof(int));
-    at_response_free(p_response);
-    return;
+on_exit:
+    if (ril_err != RIL_E_SUCCESS) {
+        RLOGE("requestQueryNetworkSelectionMode must never return error when radio is on");
+    }
 
-error:
+    RIL_onRequestComplete(t, ril_err, ril_err == RIL_E_SUCCESS ? &response : NULL,
+        ril_err == RIL_E_SUCCESS ? sizeof(int) : 0);
     at_response_free(p_response);
-    RLOGE("requestQueryNetworkSelectionMode must never return error when radio is on");
-    RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
 }
 
 static void requestSignalStrength(void* data, size_t datalen, RIL_Token t)
@@ -158,9 +162,10 @@ static void requestSignalStrength(void* data, size_t datalen, RIL_Token t)
     (void)datalen;
 
     ATResponse* p_response = NULL;
-    int err;
-    char* line;
-    int count = 0;
+    RIL_Errno ril_err = RIL_E_SUCCESS;
+    int err = -1;
+    char* line = NULL;
+    int count;
     // Accept a response that is at least v6, and up to v12
     int minNumOfElements = sizeof(RIL_SignalStrength_v6) / sizeof(int);
     int maxNumOfElements = sizeof(RIL_SignalStrength_v12) / sizeof(int);
@@ -168,30 +173,36 @@ static void requestSignalStrength(void* data, size_t datalen, RIL_Token t)
 
     memset(response, 0, sizeof(response));
     err = at_send_command_singleline("AT+CSQ", "+CSQ:", &p_response);
-
-    if (err < 0 || p_response->success == 0) {
-        RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
-        goto error;
+    if (err != AT_ERROR_OK || !p_response || p_response->success != AT_OK) {
+        RLOGE("Fail to send AT+CSQ due to: %s", at_io_err_str(err));
+        ril_err = RIL_E_GENERIC_FAILURE;
+        goto on_exit;
     }
 
     line = p_response->p_intermediates->line;
     err = at_tok_start(&line);
-    if (err < 0)
-        goto error;
+    if (err < 0) {
+        RLOGE("Fail to parse line in %s", __func__);
+        ril_err = RIL_E_GENERIC_FAILURE;
+        goto on_exit;
+    }
 
     for (count = 0; count < maxNumOfElements; count++) {
         err = at_tok_nextint(&line, &(response[count]));
-        if (err < 0 && count < minNumOfElements)
-            goto error;
+        if (err < 0 && count < minNumOfElements) {
+            RLOGE("Fail to parse signal strength in %s", __func__);
+            ril_err = RIL_E_GENERIC_FAILURE;
+            goto on_exit;
+        }
     }
 
-    RIL_onRequestComplete(t, RIL_E_SUCCESS, response, sizeof(response));
-    at_response_free(p_response);
-    return;
+on_exit:
+    if (ril_err != RIL_E_SUCCESS) {
+        RLOGE("requestSignalStrength must never return an error when radio is on");
+    }
 
-error:
-    RLOGE("requestSignalStrength must never return an error when radio is on");
-    RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
+    RIL_onRequestComplete(t, ril_err, ril_err == RIL_E_SUCCESS ? response : NULL,
+        ril_err == RIL_E_SUCCESS ? sizeof(response) : 0);
     at_response_free(p_response);
 }
 
@@ -220,11 +231,27 @@ static void requestSetPreferredNetworkType(void* data, size_t datalen, RIL_Token
     (void)datalen;
 
     ATResponse* p_response = NULL;
+    RIL_Errno ril_err = RIL_E_SUCCESS;
     char* cmd = NULL;
-    int value = *(int*)data;
+    int value;
     int current, old;
-    int err;
-    int32_t preferred = net2pmask[value];
+    int err = -1;
+    int32_t preferred;
+
+    if (data == NULL) {
+        RLOGE("requestSetPreferredNetworkType data is NULL");
+        RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
+        return;
+    }
+
+    value = *(int*)data;
+    if (value < 0 || value >= (sizeof(net2pmask) / sizeof(net2pmask[0]))) {
+        RLOGE("data is invalid");
+        RIL_onRequestComplete(t, RIL_E_INVALID_ARGUMENTS, NULL, 0);
+        return;
+    }
+
+    preferred = net2pmask[value];
 
     RLOGD("requestSetPreferredNetworkType: current: %lx. New: %lx",
         PREFERRED_NETWORK(getModemInfo()), preferred);
@@ -242,15 +269,19 @@ static void requestSetPreferredNetworkType(void* data, size_t datalen, RIL_Token
     RLOGD("old != preferred: %d", old != preferred);
 
     if (old != preferred) {
-        asprintf(&cmd, "AT+CTEC=%d,\"%lx\"", current, preferred);
+        if (asprintf(&cmd, "AT+CTEC=%d,\"%lx\"", current, preferred) < 0) {
+            RLOGE("Failed to allocate memory");
+            ril_err = RIL_E_NO_MEMORY;
+            goto on_exit;
+        }
+
         RLOGD("Sending command: <%s>", cmd);
         err = at_send_command_singleline(cmd, "+CTEC:", &p_response);
-        free(cmd);
 
-        if (err || !p_response->success) {
+        if (err != AT_ERROR_OK || !p_response || p_response->success != AT_OK) {
             RLOGE("Failure occurred in sending %s due to: %s", cmd, at_io_err_str(err));
-            RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
-            return;
+            ril_err = RIL_E_GENERIC_FAILURE;
+            goto on_exit;
         }
 
         PREFERRED_NETWORK(getModemInfo()) = value;
@@ -268,7 +299,10 @@ static void requestSetPreferredNetworkType(void* data, size_t datalen, RIL_Token
         }
     }
 
-    RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
+on_exit:
+    RIL_onRequestComplete(t, ril_err, NULL, 0);
+    at_response_free(p_response);
+    free(cmd);
 }
 
 static void requestGetPreferredNetworkType(void* data, size_t datalen, RIL_Token t)
@@ -315,12 +349,13 @@ static void requestImsRegStateChange(void* data, size_t datalen, RIL_Token t)
     (void)datalen;
 
     int is_on = 0;
-    char* cmd;
+    char* cmd = NULL;
     ATResponse* p_response = NULL;
+    RIL_Errno ril_err = RIL_E_SUCCESS;
     int err = -1;
 
     if (data == NULL) {
-        RLOGD("data is NULL");
+        RLOGD("requestImsRegStateChange data is NULL");
         RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
         return;
     }
@@ -330,22 +365,27 @@ static void requestImsRegStateChange(void* data, size_t datalen, RIL_Token t)
 
     if (is_on != 0 && is_on != 1) {
         RLOGE("Invalid arguments in RIL");
-        RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
-        return;
+        ril_err = RIL_E_GENERIC_FAILURE;
+        goto on_exit;
     }
 
-    asprintf(&cmd, "AT+CAVIMS=%d", is_on);
+    if (asprintf(&cmd, "AT+CAVIMS=%d", is_on) < 0) {
+        RLOGE("Failed to allocate memory");
+        ril_err = RIL_E_NO_MEMORY;
+        goto on_exit;
+    }
+
     err = at_send_command(cmd, &p_response);
-
-    if (err < 0 || p_response->success == 0) {
+    if (err != AT_ERROR_OK || !p_response || p_response->success != AT_OK) {
         RLOGE("Failure occurred in sending %s due to: %s", cmd, at_io_err_str(err));
-        RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
-    } else {
-        RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
+        ril_err = RIL_E_GENERIC_FAILURE;
+        goto on_exit;
     }
 
-    free(cmd);
+on_exit:
+    RIL_onRequestComplete(t, ril_err, NULL, 0);
     at_response_free(p_response);
+    free(cmd);
 }
 
 /*
@@ -366,12 +406,13 @@ static void requestImsSetServiceStatus(void* data, size_t datalen, RIL_Token t)
     (void)datalen;
 
     int ims_service = 0;
-    char* cmd;
+    char* cmd = NULL;
     ATResponse* p_response = NULL;
+    RIL_Errno ril_err = RIL_E_SUCCESS;
     int err = -1;
 
     if (data == NULL) {
-        RLOGD("data is NULL");
+        RLOGD("requestImsSetServiceStatus data is NULL");
         RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
         return;
     }
@@ -380,20 +421,25 @@ static void requestImsSetServiceStatus(void* data, size_t datalen, RIL_Token t)
     RLOGD("set ims_service : ims_service = %d\n", ims_service);
     if (ims_service != 1 && ims_service != 4 && ims_service != 5) {
         RLOGE("Invalid arguments in RIL");
-        RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
-        return;
+        ril_err = RIL_E_INVALID_ARGUMENTS;
+        goto on_exit;
     }
 
-    asprintf(&cmd, "AT+CASIMS=%d", ims_service);
+    if (asprintf(&cmd, "AT+CASIMS=%d", ims_service) < 0) {
+        RLOGE("Failed to allocate memory");
+        ril_err = RIL_E_NO_MEMORY;
+        goto on_exit;
+    }
+
     err = at_send_command(cmd, &p_response);
-
-    if (err < 0 || p_response->success == 0) {
+    if (err != AT_ERROR_OK || !p_response || p_response->success != AT_OK) {
         RLOGE("Failure occurred in sending %s due to: %s", cmd, at_io_err_str(err));
-        RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
-    } else {
-        RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
+        ril_err = RIL_E_GENERIC_FAILURE;
+        goto on_exit;
     }
 
+on_exit:
+    RIL_onRequestComplete(t, ril_err, NULL, 0);
     at_response_free(p_response);
     free(cmd);
 }
@@ -403,31 +449,45 @@ static void requestSetNetworlSelectionManual(void* data, size_t datalen, RIL_Tok
     (void)datalen;
 
     int err = -1;
-    char cmd[64] = { 0 };
+    int ret = -1;
+    char* cmd = NULL;
     ATResponse* p_response = NULL;
-    RIL_NetworkOperator* operator=(RIL_NetworkOperator*) data;
+    RIL_Errno ril_err = RIL_E_SUCCESS;
+    RIL_NetworkOperator* operator= NULL;
 
-    snprintf(cmd, sizeof(cmd), "AT+COPS=1,2,\"%s\",%d",
-                               operator->operatorNumeric, (int)operator->act);
+    if (data == NULL) {
+        RLOGE("requestSetNetworlSelectionManual data is NULL");
+        RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
+        return;
+    }
+
+    operator=(RIL_NetworkOperator*) data;
+    ret = asprintf(&cmd, "AT+COPS=1,2,\"%s\",%d", operator->operatorNumeric, (int)operator->act);
+    if (ret < 0) {
+        RLOGE("Failed to allocate memory");
+        ril_err = RIL_E_NO_MEMORY;
+        goto on_exit;
+    }
 
     err = at_send_command(cmd, &p_response);
-    if (err < 0 || p_response->success == 0) {
+    if (err != AT_ERROR_OK || !p_response || p_response->success != AT_OK) {
         RLOGE("Failure occurred in sending %s due to: %s", cmd, at_io_err_str(err));
-        goto error;
+        ril_err = RIL_E_GENERIC_FAILURE;
+        goto on_exit;
     }
 
-    RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
-    at_response_free(p_response);
-    return;
-
-error:
-    if (p_response != NULL && !strcmp(p_response->finalResponse, "+CME ERROR: 30")) {
-        RIL_onRequestComplete(t, RIL_E_RADIO_NOT_AVAILABLE, NULL, 0);
-    } else {
-        RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
+on_exit:
+    if (ril_err != RIL_E_SUCCESS) {
+        if (p_response != NULL && !strcmp(p_response->finalResponse, "+CME ERROR: 30")) {
+            ril_err = RIL_E_RADIO_NOT_AVAILABLE;
+        } else {
+            ril_err = RIL_E_GENERIC_FAILURE;
+        }
     }
 
+    RIL_onRequestComplete(t, ril_err, NULL, 0);
     at_response_free(p_response);
+    free(cmd);
 }
 
 void requestQueryAvailableNetworks(void* data, size_t datalen, RIL_Token t)
@@ -436,24 +496,24 @@ void requestQueryAvailableNetworks(void* data, size_t datalen, RIL_Token t)
     (void)datalen;
 
     ATResponse* p_response = NULL;
+    RIL_Errno ril_err = RIL_E_SUCCESS;
     int err = -1;
     char* line;
     int len;
     int i, j, k;
     int nplmns;
     int nplmns_valid;
-    char** response;
-    char** response_valid;
-    char* str;
-    char* item;
-    char* result;
+    char** response = NULL;
+    char** response_valid = NULL;
+    char* str = NULL;
+    char* item = NULL;
+    char* result = NULL;
 
     err = at_send_command_singleline("AT+COPS=?", "+COPS:", &p_response);
-    if (err < 0 || !p_response || !p_response->success || !p_response->p_intermediates) {
+    if (err != AT_ERROR_OK || !p_response || p_response->success != AT_OK) {
         RLOGE("Failure occurred in sending %s due to: %s", "AT+COPS=?", at_io_err_str(err));
-        RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
-        at_response_free(p_response);
-        return;
+        ril_err = RIL_E_GENERIC_FAILURE;
+        goto on_exit;
     }
 
     /*
@@ -472,18 +532,15 @@ void requestQueryAvailableNetworks(void* data, size_t datalen, RIL_Token t)
     response = (char**)calloc(1, sizeof(char*) * nplmns * 4);
     if (!response) {
         RLOGE("Memory allocation failed in requestQueryAvailableNetworks");
-        RIL_onRequestComplete(t, RIL_E_NO_MEMORY, NULL, 0);
-        at_response_free(p_response);
-        return;
+        ril_err = RIL_E_NO_MEMORY;
+        goto on_exit;
     }
 
     item = (char*)calloc(1, nplmns * sizeof(char) * 4 * MAX_OPER_NAME_LENGTH);
     if (!item) {
         RLOGE("Memory allocation failed in requestQueryAvailableNetworks");
-        RIL_onRequestComplete(t, RIL_E_NO_MEMORY, NULL, 0);
-        free(response);
-        at_response_free(p_response);
-        return;
+        ril_err = RIL_E_NO_MEMORY;
+        goto on_exit;
     }
 
     result = line;
@@ -545,11 +602,8 @@ void requestQueryAvailableNetworks(void* data, size_t datalen, RIL_Token t)
         len = strlen(response[j + 2]);
         if (len != 5 && len != 6) {
             RLOGE("The length of the numeric code is incorrect");
-            RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
-            free(response);
-            free(item);
-            at_response_free(p_response);
-            return;
+            ril_err = RIL_E_GENERIC_FAILURE;
+            goto on_exit;
         }
 
         for (k = 0; k < j; k += 4) {
@@ -564,11 +618,8 @@ void requestQueryAvailableNetworks(void* data, size_t datalen, RIL_Token t)
     response_valid = (char**)calloc(1, sizeof(char*) * nplmns_valid * 4);
     if (!response_valid) {
         RLOGE("Memory allocation failed in requestQueryAvailableNetworks");
-        RIL_onRequestComplete(t, RIL_E_NO_MEMORY, NULL, 0);
-        free(response);
-        free(item);
-        at_response_free(p_response);
-        return;
+        ril_err = RIL_E_NO_MEMORY;
+        goto on_exit;
     }
 
     for (i = 0, k = 0; i < nplmns; i++) {
@@ -581,12 +632,13 @@ void requestQueryAvailableNetworks(void* data, size_t datalen, RIL_Token t)
         }
     }
 
-    RIL_onRequestComplete(t, RIL_E_SUCCESS, response_valid, sizeof(char*) * nplmns_valid * 4);
-
-    free(response);
-    free(response_valid);
-    free(item);
+on_exit:
+    RIL_onRequestComplete(t, ril_err, ril_err == RIL_E_SUCCESS ? response_valid : NULL,
+        ril_err == RIL_E_SUCCESS ? sizeof(char*) * nplmns_valid * 4 : 0);
     at_response_free(p_response);
+    free(response_valid);
+    free(response);
+    free(item);
 }
 
 static void requestSetCellInfoListRate(void* data, size_t datalen, RIL_Token t)
@@ -642,52 +694,66 @@ static void requestImsRegState(void* data, size_t datalen, RIL_Token t)
     (void)datalen;
 
     ATResponse* p_response = NULL;
-    int err;
-    char* line;
+    RIL_Errno ril_err = RIL_E_SUCCESS;
+    int err = -1;
+    char* line = NULL;
     RIL_IMS_REGISTRATION_STATE_RESPONSE reply;
 
     err = at_send_command_singleline("AT+CIREG?", "+CIREG:", &p_response);
-    if (err < 0 || !p_response->success) {
+    if (err != AT_ERROR_OK || !p_response || p_response->success != AT_OK) {
         RLOGE("Failure occurred in sending %s due to: %s", "AT+CIREG?", at_io_err_str(err));
-        goto error;
+        ril_err = RIL_E_GENERIC_FAILURE;
+        goto on_exit;
     }
 
     line = p_response->p_intermediates->line;
 
     err = at_tok_start(&line);
-    if (err < 0)
-        goto error;
+    if (err < 0) {
+        RLOGE("Fail to parse line in %s", __func__);
+        ril_err = RIL_E_GENERIC_FAILURE;
+        goto on_exit;
+    }
 
     err = at_tok_nextint(&line, &reply.reg_state);
-    if (err < 0)
-        goto error;
+    if (err < 0) {
+        RLOGE("Fail to parse reg_state in %s", __func__);
+        ril_err = RIL_E_GENERIC_FAILURE;
+        goto on_exit;
+    }
 
     err = at_tok_nextint(&line, &reply.service_type);
-    if (err < 0)
-        goto error;
+    if (err < 0) {
+        RLOGE("Fail to parse service_type in %s", __func__);
+        ril_err = RIL_E_GENERIC_FAILURE;
+        goto on_exit;
+    }
 
     err = at_send_command_singleline("AT+CNUM", "+CNUM:", &p_response);
-    if (err < 0 || !p_response->success) {
+    if (err != AT_ERROR_OK || !p_response || p_response->success != AT_OK) {
         RLOGE("Failure occurred in sending %s due to: %s", "AT+CNUM", at_io_err_str(err));
-        goto error;
+        ril_err = RIL_E_GENERIC_FAILURE;
+        goto on_exit;
     }
 
     line = p_response->p_intermediates->line;
     err = at_tok_start(&line);
-    if (err < 0)
-        goto error;
+    if (err < 0) {
+        RLOGE("Fail to parse line in %s", __func__);
+        ril_err = RIL_E_GENERIC_FAILURE;
+        goto on_exit;
+    }
 
     err = at_tok_nextstr(&line, &reply.uri_response);
+    if (err < 0) {
+        RLOGE("Fail to parse uri in %s", __func__);
+        ril_err = RIL_E_GENERIC_FAILURE;
+        goto on_exit;
+    }
 
-    if (err < 0)
-        goto error;
-
-    RIL_onRequestComplete(t, RIL_E_SUCCESS, &reply, sizeof(reply));
-    at_response_free(p_response);
-    return;
-
-error:
-    RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
+on_exit:
+    RIL_onRequestComplete(t, ril_err, ril_err == RIL_E_SUCCESS ? &reply : NULL,
+        ril_err == RIL_E_SUCCESS ? sizeof(reply) : 0);
     at_response_free(p_response);
 }
 
@@ -698,6 +764,7 @@ static void requestVoiceRegistrationState(void* data, size_t datalen, RIL_Token 
     int* registration = NULL;
     char** responseStr = NULL;
     ATResponse* p_response = NULL;
+    RIL_Errno ril_err = RIL_E_SUCCESS;
     const char* cmd;
     const char* prefix;
     char* line;
@@ -711,20 +778,27 @@ static void requestVoiceRegistrationState(void* data, size_t datalen, RIL_Token 
     numElements = REG_STATE_LEN;
 
     err = at_send_command_singleline(cmd, prefix, &p_response);
-
-    if (err < 0 || !p_response->success) {
+    if (err != AT_ERROR_OK || !p_response || p_response->success != AT_OK) {
         RLOGE("Failure occurred in sending %s due to: %s", cmd, at_io_err_str(err));
-        goto error;
+        ril_err = RIL_E_SUCCESS;
+        goto on_exit;
     }
 
     line = p_response->p_intermediates->line;
 
-    if (parseRegistrationState(line, &type, &count, &registration))
-        goto error;
+    if (parseRegistrationState(line, &type, &count, &registration)) {
+        RLOGE("Fail to parse registration state in %s", __func__);
+        ril_err = RIL_E_GENERIC_FAILURE;
+        goto on_exit;
+    }
 
     responseStr = malloc(numElements * sizeof(char*));
-    if (!responseStr)
-        goto error;
+    if (!responseStr) {
+        RLOGE("Failed to allocate memory");
+        ril_err = RIL_E_NO_MEMORY;
+        goto on_exit;
+    }
+
     memset(responseStr, 0, numElements * sizeof(char*));
 
     /**
@@ -736,65 +810,164 @@ static void requestVoiceRegistrationState(void* data, size_t datalen, RIL_Token 
         RLOGD("registration state type: 3GPP2");
         // TODO: Query modem
         startfrom = 3;
-        asprintf(&responseStr[3], "8"); // EvDo revA
-        asprintf(&responseStr[4], "1"); // BSID
-        asprintf(&responseStr[5], "123"); // Latitude
-        asprintf(&responseStr[6], "222"); // Longitude
-        asprintf(&responseStr[7], "0"); // CSS Indicator
-        asprintf(&responseStr[8], "4"); // SID
-        asprintf(&responseStr[9], "65535"); // NID
-        asprintf(&responseStr[10], "0"); // Roaming indicator
-        asprintf(&responseStr[11], "1"); // System is in PRL
-        asprintf(&responseStr[12], "0"); // Default Roaming indicator
-        asprintf(&responseStr[13], "0"); // Reason for denial
-        asprintf(&responseStr[14], "0"); // Primary Scrambling Code of Current cell
+
+        // EvDo revA
+        if (asprintf(&responseStr[3], "8") < 0) {
+            RLOGE("Failed to allocate memory");
+            ril_err = RIL_E_NO_MEMORY;
+            goto on_exit;
+        }
+
+        // BSID
+        if (asprintf(&responseStr[4], "1") < 0) {
+            RLOGE("Failed to allocate memory");
+            ril_err = RIL_E_NO_MEMORY;
+            goto on_exit;
+        }
+
+        // Latitude
+        if (asprintf(&responseStr[5], "123") < 0) {
+            RLOGE("Failed to allocate memory");
+            ril_err = RIL_E_NO_MEMORY;
+            goto on_exit;
+        }
+
+        // Longitude
+        if (asprintf(&responseStr[6], "222") < 0) {
+            RLOGE("Failed to allocate memory");
+            ril_err = RIL_E_NO_MEMORY;
+            goto on_exit;
+        }
+
+        // CSS Indicator
+        if (asprintf(&responseStr[7], "0") < 0) {
+            RLOGE("Failed to allocate memory");
+            ril_err = RIL_E_NO_MEMORY;
+            goto on_exit;
+        }
+
+        // SID
+        if (asprintf(&responseStr[8], "4") < 0) {
+            RLOGE("Failed to allocate memory");
+            ril_err = RIL_E_NO_MEMORY;
+            goto on_exit;
+        }
+
+        // NID
+        if (asprintf(&responseStr[9], "65535") < 0) {
+            RLOGE("Failed to allocate memory");
+            ril_err = RIL_E_NO_MEMORY;
+            goto on_exit;
+        }
+
+        // Roaming indicator
+        if (asprintf(&responseStr[10], "0") < 0) {
+            RLOGE("Failed to allocate memory");
+            ril_err = RIL_E_NO_MEMORY;
+            goto on_exit;
+        }
+
+        // System is in PRL
+        if (asprintf(&responseStr[11], "1") < 0) {
+            RLOGE("Failed to allocate memory");
+            ril_err = RIL_E_NO_MEMORY;
+            goto on_exit;
+        }
+
+        // Default Roaming indicator
+        if (asprintf(&responseStr[12], "0") < 0) {
+            RLOGE("Failed to allocate memory");
+            ril_err = RIL_E_NO_MEMORY;
+            goto on_exit;
+        }
+
+        // Reason for denial
+        if (asprintf(&responseStr[13], "0") < 0) {
+            RLOGE("Failed to allocate memory");
+            ril_err = RIL_E_NO_MEMORY;
+            goto on_exit;
+        }
+
+        // Primary Scrambling Code of Current cell
+        if (asprintf(&responseStr[14], "0") < 0) {
+            RLOGE("Failed to allocate memory");
+            ril_err = RIL_E_NO_MEMORY;
+            goto on_exit;
+        }
     } else { // type == RADIO_TECH_3GPP
         RLOGD("registration state type: 3GPP");
         startfrom = 0;
 
         if (count > 1) {
-            asprintf(&responseStr[1], "%x", registration[1]);
+            if (asprintf(&responseStr[1], "%x", registration[1]) < 0) {
+                RLOGE("Failed to allocate memory");
+                ril_err = RIL_E_NO_MEMORY;
+                goto on_exit;
+            }
         }
 
         if (count > 2) {
-            asprintf(&responseStr[2], "%x", registration[2]);
+            if (asprintf(&responseStr[2], "%x", registration[2]) < 0) {
+                RLOGE("Failed to allocate memory");
+                ril_err = RIL_E_NO_MEMORY;
+                goto on_exit;
+            }
         }
 
         if (count > 3) {
-            asprintf(&responseStr[3], "%d", mapNetworkRegistrationResponse(registration[3]));
+            if (asprintf(&responseStr[3], "%d",
+                    mapNetworkRegistrationResponse(registration[3]))
+                < 0) {
+                RLOGE("Failed to allocate memory");
+                ril_err = RIL_E_NO_MEMORY;
+                goto on_exit;
+            }
         }
     }
 
-    asprintf(&responseStr[0], "%d", registration[0]);
-    asprintf(&responseStr[15], "%d", getMcc());
-    asprintf(&responseStr[16], "%d", getMnc());
+    if (asprintf(&responseStr[0], "%d", registration[0]) < 0) {
+        RLOGE("Failed to allocate memory");
+        ril_err = RIL_E_NO_MEMORY;
+        goto on_exit;
+    }
+
+    if (asprintf(&responseStr[15], "%d", getMcc()) < 0) {
+        RLOGE("Failed to allocate memory");
+        ril_err = RIL_E_NO_MEMORY;
+        goto on_exit;
+    }
+
+    if (asprintf(&responseStr[16], "%d", getMnc()) < 0) {
+        RLOGE("Failed to allocate memory");
+        ril_err = RIL_E_NO_MEMORY;
+        goto on_exit;
+    }
+
     if (getMncLength() == 2) {
-        asprintf(&responseStr[17], "%03d%02d", getMcc(), getMnc());
+        if (asprintf(&responseStr[17], "%03d%02d", getMcc(), getMnc()) < 0) {
+            RLOGE("Failed to allocate memory");
+            ril_err = RIL_E_NO_MEMORY;
+            goto on_exit;
+        }
     } else {
-        asprintf(&responseStr[17], "%03d%03d", getMcc(), getMnc());
+        if (asprintf(&responseStr[17], "%03d%03d", getMcc(), getMnc()) < 0) {
+            RLOGE("Failed to allocate memory");
+            ril_err = RIL_E_NO_MEMORY;
+            goto on_exit;
+        }
     }
 
     for (j = startfrom; j < numElements; j++) {
         if (!responseStr[i])
-            goto error;
+            goto on_exit;
     }
 
+on_exit:
     free(registration);
     registration = NULL;
-    RIL_onRequestComplete(t, RIL_E_SUCCESS, responseStr, numElements * sizeof(responseStr));
-
-    for (j = 0; j < numElements; j++) {
-        free(responseStr[j]);
-        responseStr[j] = NULL;
-    }
-
-    free(responseStr);
-    responseStr = NULL;
+    RIL_onRequestComplete(t, ril_err, ril_err == RIL_E_SUCCESS ? responseStr : NULL,
+        ril_err == RIL_E_SUCCESS ? numElements * sizeof(responseStr) : 0);
     at_response_free(p_response);
-
-    return;
-error:
-    free(registration);
     if (responseStr) {
         for (j = 0; j < numElements; j++) {
             free(responseStr[j]);
@@ -805,9 +978,8 @@ error:
         responseStr = NULL;
     }
 
-    RLOGE("requestRegistrationState must never return an error when radio is on");
-    RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
-    at_response_free(p_response);
+    if (ril_err != RIL_E_SUCCESS)
+        RLOGE("requestRegistrationState must never return an error when radio is on");
 }
 
 static void requestGetNeighboringCellIds(void* data, size_t datalen, RIL_Token t)
@@ -825,20 +997,27 @@ static void requestGetNeighboringCellIds(void* data, size_t datalen, RIL_Token t
 
 static void requestSetNetowkAutoMode(void* data, size_t datalen, RIL_Token t)
 {
+    (void)data;
+    (void)datalen;
+
     if (getSIMStatus() == SIM_ABSENT) {
         RIL_onRequestComplete(t, RIL_E_RADIO_NOT_AVAILABLE, NULL, 0);
         return;
     }
 
     ATResponse* p_response = NULL;
-    int err = at_send_command("AT+COPS=0", &p_response);
-    if (err < 0 || p_response->success == 0) {
+    RIL_Errno ril_err = RIL_E_SUCCESS;
+    int err = -1;
+
+    err = at_send_command("AT+COPS=0", &p_response);
+    if (err != AT_ERROR_OK || !p_response || p_response->success != AT_OK) {
         RLOGE("Failure occurred in sending %s due to: %s", "AT+COPS=0", at_io_err_str(err));
-        RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
-    } else {
-        RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
+        ril_err = RIL_E_GENERIC_FAILURE;
+        goto on_exit;
     }
 
+on_exit:
+    RIL_onRequestComplete(t, ril_err, NULL, 0);
     at_response_free(p_response);
 }
 
@@ -893,6 +1072,7 @@ static void on_signal_strength_unsol_resp(const char* s)
     for (int count = 0; count < maxNumOfElements; count++) {
         err = at_tok_nextint(&p, &(response[count]));
         if (err < 0 && count < minNumOfElements) {
+            RLOGE("Fail to parse response in %s", __func__);
             free(line);
             return;
         }
@@ -959,8 +1139,10 @@ int parseRegistrationState(char* str, int* type, int* items, int** response)
     RLOGD("parseRegistrationState. Parsing: %s", str);
 
     err = at_tok_start(&line);
-    if (err < 0)
+    if (err < 0) {
+        RLOGE("Fail to parse line in %s", __func__);
         goto error;
+    }
 
     /* Ok you have to be careful here
      * The solicited version of the CREG response is
@@ -991,50 +1173,78 @@ int parseRegistrationState(char* str, int* type, int* items, int** response)
     }
 
     resp = (int*)calloc(commas + 1, sizeof(int));
-    if (!resp)
+    if (!resp) {
+        RLOGE("resp is null");
         goto error;
+    }
 
     switch (commas) {
     case 0: /* +CREG: <stat> */
         err = at_tok_nextint(&line, &resp[0]);
-        if (err < 0)
+        if (err < 0) {
+            RLOGE("Fail to parse stat in %s", __func__);
             goto error;
+        }
         break;
 
     case 1: /* +CREG: <n>, <stat> */
         err = at_tok_nextint(&line, &skip);
-        if (err < 0)
+        if (err < 0) {
+            RLOGE("Fail to parse integer in %s", __func__);
             goto error;
+        }
+
         err = at_tok_nextint(&line, &resp[0]);
-        if (err < 0)
+        if (err < 0) {
+            RLOGE("Fail to parse stat in %s", __func__);
             goto error;
+        }
         break;
 
     case 2: /* +CREG: <stat>, <lac>, <cid> */
         err = at_tok_nextint(&line, &resp[0]);
-        if (err < 0)
+        if (err < 0) {
+            RLOGE("Fail to parse stat in %s", __func__);
             goto error;
+        }
+
         err = at_tok_nexthexint(&line, &resp[1]);
-        if (err < 0)
+        if (err < 0) {
+            RLOGE("Fail to parse lac in %s", __func__);
             goto error;
+        }
+
         err = at_tok_nexthexint(&line, &resp[2]);
-        if (err < 0)
+        if (err < 0) {
+            RLOGE("Fail to parse cid in %s", __func__);
             goto error;
+        }
         break;
 
     case 3: /* +CREG: <n>, <stat>, <lac>, <cid> */
         err = at_tok_nextint(&line, &skip);
-        if (err < 0)
+        if (err < 0) {
+            RLOGE("Fail to parse integer in %s", __func__);
             goto error;
+        }
+
         err = at_tok_nextint(&line, &resp[0]);
-        if (err < 0)
+        if (err < 0) {
+            RLOGE("Fail to parse stat in %s", __func__);
             goto error;
+        }
+
         err = at_tok_nexthexint(&line, &resp[1]);
-        if (err < 0)
+        if (err < 0) {
+            RLOGE("Fail to parse lac in %s", __func__);
             goto error;
+        }
+
         err = at_tok_nexthexint(&line, &resp[2]);
-        if (err < 0)
+        if (err < 0) {
+            RLOGE("Fail to parse cid in %s", __func__);
             goto error;
+        }
         break;
 
     /* special case for CGREG, there is a fourth parameter
@@ -1042,20 +1252,34 @@ int parseRegistrationState(char* str, int* type, int* items, int** response)
      */
     case 4: /* +CGREG: <n>, <stat>, <lac>, <cid>, <networkType> */
         err = at_tok_nextint(&line, &skip);
-        if (err < 0)
+        if (err < 0) {
+            RLOGE("Fail to parse integer in %s", __func__);
             goto error;
+        }
+
         err = at_tok_nextint(&line, &resp[0]);
-        if (err < 0)
+        if (err < 0) {
+            RLOGE("Fail to parse stat in %s", __func__);
             goto error;
+        }
+
         err = at_tok_nexthexint(&line, &resp[1]);
-        if (err < 0)
+        if (err < 0) {
+            RLOGE("Fail to parse lac in %s", __func__);
             goto error;
+        }
+
         err = at_tok_nexthexint(&line, &resp[2]);
-        if (err < 0)
+        if (err < 0) {
+            RLOGE("Fail to parse cid in %s", __func__);
             goto error;
+        }
+
         err = at_tok_nextint(&line, &resp[3]);
-        if (err < 0)
+        if (err < 0) {
+            RLOGE("Fail to parse networkType in %s", __func__);
             goto error;
+        }
         break;
 
     default:
@@ -1245,7 +1469,7 @@ bool try_handle_unsol_net(const char* s)
         on_signal_strength_unsol_resp(s);
         ret = true;
     } else {
-        RLOGI("Can't match any unsol network handlers");
+        RLOGD("Can't match any unsol network handlers");
     }
 
     return ret;

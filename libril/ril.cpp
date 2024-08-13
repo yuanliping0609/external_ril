@@ -1836,7 +1836,7 @@ static int blockingWrite(int fd, const void* buffer, size_t len)
         }
     }
 
-    RLOGI("RIL Response bytes written: %zu", writeOffset);
+    RLOGD("RIL Response bytes written: %zu", writeOffset);
 
     return 0;
 }

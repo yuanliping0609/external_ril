@@ -978,7 +978,7 @@ bool try_handle_unsol_data(const char* s)
         RIL_requestTimedCallback(onDataCallListChanged, NULL, NULL);
         ret = true;
     } else {
-        RLOGI("Can't match any unsol data handlers");
+        RLOGD("Can't match any unsol data handlers");
     }
 
     return ret;
