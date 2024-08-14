@@ -241,21 +241,28 @@ static int query_supported_techs(ModemInfo* mdm, int* supported)
 {
     (void)mdm;
 
-    ATResponse* p_response;
-    int err, val, techs = 0;
-    char* line;
+    ATResponse* p_response = NULL;
+    RIL_Errno ril_err = RIL_E_SUCCESS;
+    int err = -1;
+    int val = 0;
+    int techs = 0;
+    char* line = NULL;
 
     RLOGD("query_supported_techs");
     err = at_send_command_singleline("AT+CTEC=?", "+CTEC:", &p_response);
-    if (err || !p_response->success) {
+    if (err != AT_ERROR_OK || !p_response || p_response->success != AT_OK) {
         RLOGE("Failure occurred in sending %s due to: %s", "AT+CTEC=?", at_io_err_str(err));
-        goto error;
+        ril_err = RIL_E_GENERIC_FAILURE;
+        goto on_exit;
     }
 
     line = p_response->p_intermediates->line;
     err = at_tok_start(&line);
-    if (err || !at_tok_hasmore(&line))
-        goto error;
+    if (err || !at_tok_hasmore(&line)) {
+        RLOGE("Fail to parse line in %s", __func__);
+        ril_err = RIL_E_GENERIC_FAILURE;
+        goto on_exit;
+    }
 
     while (!at_tok_nextint(&line, &val)) {
         techs |= (1 << val);
@@ -264,11 +271,9 @@ static int query_supported_techs(ModemInfo* mdm, int* supported)
     if (supported)
         *supported = techs;
 
-    return 0;
-
-error:
+on_exit:
     at_response_free(p_response);
-    return -1;
+    return ril_err == RIL_E_SUCCESS ? 0 : -1;
 }
 
 static int is_multimode_modem(ModemInfo* mdm)
@@ -292,8 +297,8 @@ static int is_multimode_modem(ModemInfo* mdm)
 /* Find out if our modem is GSM, CDMA or both (Multimode) */
 static void probeForModemMode(ModemInfo* info)
 {
-    ATResponse* response;
-    int err;
+    ATResponse* p_response = NULL;
+    int err = -1;
     assert(info);
     // Currently, our only known multimode modem is qemu's android modem,
     // which implements the AT+CTEC command to query and set mode.
@@ -309,9 +314,9 @@ static void probeForModemMode(ModemInfo* info)
     info->isMultimode = 0;
 
     /* CDMA Modems implement the AT+WNAM command */
-    err = at_send_command_singleline("AT+WNAM", "+WNAM:", &response);
-    if (!err && response->success) {
-        at_response_free(response);
+    err = at_send_command_singleline("AT+WNAM", "+WNAM:", &p_response);
+    if (!err && p_response && p_response->success) {
+        at_response_free(p_response);
         // TODO: find out if we really support EvDo
         info->supportedTechs = MDM_CDMA | MDM_EVDO;
         info->currentTech = MDM_CDMA;
@@ -319,8 +324,7 @@ static void probeForModemMode(ModemInfo* info)
         return;
     }
 
-    if (!err)
-        at_response_free(response);
+    at_response_free(p_response);
     // TODO: find out if modem really supports WCDMA/LTE
     info->supportedTechs = MDM_GSM | MDM_WCDMA | MDM_LTE;
     info->currentTech = MDM_GSM;
@@ -472,7 +476,7 @@ static void onUnsolicited(const char* s, const char* sms_pdu)
 /* Called on command or reader thread */
 static void onATReaderClosed(void)
 {
-    RLOGI("AT channel closed\n");
+    RLOGI("AT channel closed");
     at_close();
     s_closed = 1;
 
@@ -482,7 +486,7 @@ static void onATReaderClosed(void)
 /* Called on command thread */
 static void onATTimeout(void)
 {
-    RLOGI("AT channel timeout; closing\n");
+    RLOGI("AT channel timeout; closing");
     at_close();
 
     s_closed = 1;
