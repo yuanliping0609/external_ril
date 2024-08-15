@@ -40,37 +40,44 @@ static void requestWriteSmsToSim(void* data, size_t datalen, RIL_Token t)
 {
     (void)datalen;
 
-    RIL_SMS_WriteArgs* p_args;
-    char* cmd;
-    int length;
-    int err;
+    RIL_SMS_WriteArgs* p_args = NULL;
     ATResponse* p_response = NULL;
+    RIL_Errno ril_err = RIL_E_SUCCESS;
+    char* cmd = NULL;
+    int err = -1;
+    int length;
 
     if (getSIMStatus() == SIM_ABSENT) {
         RIL_onRequestComplete(t, RIL_E_SIM_ABSENT, NULL, 0);
         return;
     }
 
-    p_args = (RIL_SMS_WriteArgs*)data;
-    length = strlen(p_args->pdu) / 2;
-    asprintf(&cmd, "AT+CMGW=%d,%d", length, p_args->status);
-
-    err = at_send_command_sms(cmd, p_args->pdu, "+CMGW:", &p_response);
-
-    if (err != 0 || p_response->success == 0) {
-        RLOGE("Failure occurred in sending %s due to: %s", cmd, at_io_err_str(err));
-        free(cmd);
-        goto error;
+    if (data == NULL) {
+        RLOGE("requestWriteSmsToSim data is null");
+        RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
+        return;
     }
 
-    RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
+    p_args = (RIL_SMS_WriteArgs*)data;
+    length = strlen(p_args->pdu) / 2;
+
+    if (asprintf(&cmd, "AT+CMGW=%d,%d", length, p_args->status) < 0) {
+        RLOGE("Failed to allocate memory");
+        ril_err = RIL_E_NO_MEMORY;
+        goto on_exit;
+    }
+
+    err = at_send_command_sms(cmd, p_args->pdu, "+CMGW:", &p_response);
+    if (err != AT_ERROR_OK || !p_response || p_response->success != AT_OK) {
+        RLOGE("Failure occurred in sending %s due to: %s", cmd, at_io_err_str(err));
+        ril_err = RIL_E_GENERIC_FAILURE;
+        goto on_exit;
+    }
+
+on_exit:
+    RIL_onRequestComplete(t, ril_err, NULL, 0);
     at_response_free(p_response);
     free(cmd);
-    return;
-
-error:
-    RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
-    at_response_free(p_response);
 }
 
 static void requestCdmaSendSMS(void* data, size_t datalen, RIL_Token t)
@@ -109,22 +116,39 @@ static void requestSendSMS(void* data, size_t datalen, RIL_Token t)
     const char* smsc;
     const char* pdu;
     int tpLayerLength;
-    char *cmd1, *cmd2;
+    char* cmd1 = NULL;
+    char* cmd2 = NULL;
     RIL_SMS_Response response;
     ATResponse* p_response = NULL;
+    RIL_Errno ril_err = RIL_E_SUCCESS;
 
     if (getSIMStatus() == SIM_ABSENT) {
         RIL_onRequestComplete(t, RIL_E_SIM_ABSENT, NULL, 0);
         return;
     }
 
+    if (data == NULL) {
+        RLOGE("requestSendSMS data is null");
+        RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
+        return;
+    }
+
     memset(&response, 0, sizeof(response));
     RLOGD("requestSendSMS datalen =%zu", datalen);
 
-    if (s_ims_gsm_fail != 0)
-        goto error;
-    if (s_ims_gsm_retry != 0)
-        goto error2;
+    if (s_ims_gsm_fail != 0) {
+        RLOGE("s_ims_gsm_fail != 0");
+        response.messageRef = -2;
+        ril_err = RIL_E_GENERIC_FAILURE;
+        goto on_exit;
+    }
+
+    if (s_ims_gsm_retry != 0) {
+        RLOGE("s_ims_gsm_retry != 0");
+        response.messageRef = -1;
+        ril_err = RIL_E_SMS_SEND_FAIL_RETRY;
+        goto on_exit;
+    }
 
     smsc = ((const char**)data)[0];
     pdu = ((const char**)data)[1];
@@ -136,68 +160,81 @@ static void requestSendSMS(void* data, size_t datalen, RIL_Token t)
         smsc = "00";
     }
 
-    asprintf(&cmd1, "AT+CMGS=%d", tpLayerLength);
-    asprintf(&cmd2, "%s%s", smsc, pdu);
+    if (asprintf(&cmd1, "AT+CMGS=%d", tpLayerLength) < 0) {
+        RLOGE("Failed to allocate memory");
+        response.messageRef = -2;
+        ril_err = RIL_E_NO_MEMORY;
+        goto on_exit;
+    }
+
+    if (asprintf(&cmd2, "%s%s", smsc, pdu) < 0) {
+        RLOGE("Failed to allocate memory");
+        response.messageRef = -2;
+        ril_err = RIL_E_NO_MEMORY;
+        goto on_exit;
+    }
 
     err = at_send_command_sms(cmd1, cmd2, "+CMGS:", &p_response);
-
-    free(cmd1);
-    free(cmd2);
-
-    if (err != 0 || p_response->success == 0) {
+    if (err != AT_ERROR_OK || !p_response || p_response->success != AT_OK) {
         RLOGE("Failure occurred in sending %s, due to: %s", "AT+CMGS", at_io_err_str(err));
-        goto error;
+        response.messageRef = -2;
+        ril_err = RIL_E_GENERIC_FAILURE;
+        goto on_exit;
     }
 
     int messageRef = 1;
     char* line = p_response->p_intermediates->line;
 
     err = at_tok_start(&line);
-    if (err < 0)
-        goto error;
+    if (err < 0) {
+        RLOGE("Fail to parse line in %s", __func__);
+        response.messageRef = -2;
+        ril_err = RIL_E_GENERIC_FAILURE;
+        goto on_exit;
+    }
 
     err = at_tok_nextint(&line, &messageRef);
-    if (err < 0)
-        goto error;
+    if (err < 0) {
+        RLOGE("Fail to  parse messageRef in %s", __func__);
+        response.messageRef = -2;
+        ril_err = RIL_E_GENERIC_FAILURE;
+        goto on_exit;
+    }
 
     /* FIXME fill in ackPDU */
     response.messageRef = messageRef;
-    RIL_onRequestComplete(t, RIL_E_SUCCESS, &response, sizeof(response));
-    at_response_free(p_response);
 
-    return;
-
-error:
-    response.messageRef = -2;
-    RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, &response, sizeof(response));
+on_exit:
+    RIL_onRequestComplete(t, ril_err, &response, sizeof(response));
     at_response_free(p_response);
-    return;
-
-error2:
-    // send retry error.
-    response.messageRef = -1;
-    RIL_onRequestComplete(t, RIL_E_SMS_SEND_FAIL_RETRY, &response, sizeof(response));
-    at_response_free(p_response);
-    return;
+    free(cmd1);
+    free(cmd2);
 }
 
 static void requestImsSendSMS(void* data, size_t datalen, RIL_Token t)
 {
-    RIL_IMS_SMS_Message* p_args;
+    RIL_IMS_SMS_Message* p_args = NULL;
     RIL_SMS_Response response;
 
-    memset(&response, 0, sizeof(response));
+    if (data == NULL) {
+        RLOGE("requestImsSendSMS data is null");
+        RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
+        return;
+    }
 
-    // figure out if this is gsm/cdma format
-    // then route it to requestSendSMS vs requestCdmaSendSMS respectively
+    memset(&response, 0, sizeof(response));
     p_args = (RIL_IMS_SMS_Message*)data;
 
-    if (0 != s_ims_cause_perm_failure)
+    if (0 != s_ims_cause_perm_failure) {
+        RLOGE("s_ims_cause_perm_failure != 0");
         goto error;
+    }
 
     // want to fail over ims and this is first request over ims
-    if (0 != s_ims_cause_retry && 0 == p_args->retry)
+    if (0 != s_ims_cause_retry && 0 == p_args->retry) {
+        RLOGE("ims cause retry or sms retry");
         goto error2;
+    }
 
     if (RADIO_TECH_3GPP == p_args->tech) {
         return requestSendSMS(p_args->message.gsmMessage,
@@ -223,35 +260,46 @@ static void requestSMSAcknowledge(void* data, size_t datalen, RIL_Token t)
 {
     (void)datalen;
 
+    ATResponse* p_response = NULL;
+    RIL_Errno ril_err = RIL_E_SUCCESS;
     int ackSuccess;
-    int err;
+    int err = -1;
 
     if (getSIMStatus() == SIM_ABSENT) {
         RIL_onRequestComplete(t, RIL_E_SIM_ABSENT, NULL, 0);
         return;
     }
 
+    if (data == NULL) {
+        RLOGE("requestSMSAcknowledge data is null");
+        RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
+        return;
+    }
+
     ackSuccess = ((int*)data)[0];
     if (ackSuccess == 1) {
-        err = at_send_command("AT+CNMA=1", NULL);
-        if (err < 0) {
-            goto error;
+        err = at_send_command("AT+CNMA=1", &p_response);
+        if (err != AT_ERROR_OK || !p_response || p_response->success != AT_OK) {
+            RLOGE("Failure occurred in sending %s due to: %s", "AT+CNMA=1", at_io_err_str(err));
+            ril_err = RIL_E_GENERIC_FAILURE;
+            goto on_exit;
         }
     } else if (ackSuccess == 0) {
-        err = at_send_command("AT+CNMA=2", NULL);
-        if (err < 0) {
-            goto error;
+        err = at_send_command("AT+CNMA=2", &p_response);
+        if (err != AT_ERROR_OK || !p_response || p_response->success != AT_OK) {
+            RLOGE("Failure occurred in sending %s due to: %s", "AT+CNMA=2", at_io_err_str(err));
+            ril_err = RIL_E_GENERIC_FAILURE;
+            goto on_exit;
         }
     } else {
         RLOGE("unsupported arg to RIL_REQUEST_SMS_ACKNOWLEDGE\n");
-        goto error;
+        ril_err = RIL_E_GENERIC_FAILURE;
+        goto on_exit;
     }
 
-    RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
-    return;
-
-error:
-    RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
+on_exit:
+    RIL_onRequestComplete(t, ril_err, NULL, 0);
+    at_response_free(p_response);
 }
 
 static void requestGetSmsBroadcastConfig(void* data, size_t datalen, RIL_Token t)
@@ -260,33 +308,51 @@ static void requestGetSmsBroadcastConfig(void* data, size_t datalen, RIL_Token t
     (void)datalen;
 
     ATResponse* p_response = NULL;
-    int err = -1, mode, commas = 0, i = 0;
+    RIL_Errno ril_err = RIL_E_SUCCESS;
+    int err = -1;
+    int commas = 0;
+    int i = 0;
+    int ret = -1;
+    int mode = 0;
     char* line = NULL;
     char *serviceIds = NULL, *codeSchemes = NULL, *p = NULL;
     char *serviceId = NULL, *codeScheme = NULL;
 
     err = at_send_command_singleline("AT+CSCB?", "+CSCB:", &p_response);
-    if (err < 0 || p_response->success == 0) {
+    if (err != AT_ERROR_OK || !p_response || p_response->success != AT_OK) {
         RLOGE("Failure occurred in sending %s due to: %s", "AT+CSCB?", at_io_err_str(err));
-        goto error;
+        ril_err = RIL_E_GENERIC_FAILURE;
+        goto on_exit;
     }
 
     line = p_response->p_intermediates->line;
     err = at_tok_start(&line);
-    if (err < 0)
-        goto error;
+    if (err < 0) {
+        RLOGE("Fail to parse line in %s", __func__);
+        ril_err = RIL_E_GENERIC_FAILURE;
+        goto on_exit;
+    }
 
     err = at_tok_nextint(&line, &mode);
-    if (err < 0)
-        goto error;
+    if (err < 0) {
+        RLOGE("Fail to parse mode in %s", __func__);
+        ril_err = RIL_E_GENERIC_FAILURE;
+        goto on_exit;
+    }
 
     err = at_tok_nextstr(&line, &serviceIds);
-    if (err < 0)
-        goto error;
+    if (err < 0) {
+        RLOGE("Fail to parse serviceIds in %s", __func__);
+        ril_err = RIL_E_GENERIC_FAILURE;
+        goto on_exit;
+    }
 
     err = at_tok_nextstr(&line, &codeSchemes);
-    if (err < 0)
-        goto error;
+    if (err < 0) {
+        RLOGE("Fail to parse codeSchemes in %s", __func__);
+        ril_err = RIL_E_GENERIC_FAILURE;
+        goto on_exit;
+    }
 
     for (p = serviceIds; *p != '\0'; p++) {
         if (*p == ',') {
@@ -304,36 +370,48 @@ static void requestGetSmsBroadcastConfig(void* data, size_t datalen, RIL_Token t
         memset(pGsmBci[i], 0, sizeof(RIL_GSM_BroadcastSmsConfigInfo));
 
         err = at_tok_nextstr(&serviceIds, &serviceId);
-        if (err < 0)
-            goto error;
+        if (err < 0) {
+            RLOGE("Fail to parse serviceId in %s", __func__);
+            ril_err = RIL_E_GENERIC_FAILURE;
+            goto on_exit;
+        }
 
         pGsmBci[i]->toServiceId = pGsmBci[i]->fromServiceId = 0;
         if (strstr(serviceId, "-")) {
-            sscanf(serviceId, "%d-%d", &pGsmBci[i]->fromServiceId,
+            ret = sscanf(serviceId, "%d-%d", &pGsmBci[i]->fromServiceId,
                 &pGsmBci[i]->toServiceId);
+            if (ret < 0) {
+                RLOGE("requestGetSmsBroadcastConfig sscanf error");
+                ril_err = RIL_E_GENERIC_FAILURE;
+                goto on_exit;
+            }
         }
 
         err = at_tok_nextstr(&codeSchemes, &codeScheme);
-        if (err < 0)
-            goto error;
+        if (err < 0) {
+            RLOGE("Fail to parse codeScheme in %s", __func__);
+            ril_err = RIL_E_GENERIC_FAILURE;
+            goto on_exit;
+        }
 
         pGsmBci[i]->toCodeScheme = pGsmBci[i]->fromCodeScheme = 0;
         if (strstr(codeScheme, "-")) {
-            sscanf(codeScheme, "%d-%d", &pGsmBci[i]->fromCodeScheme,
+            ret = sscanf(codeScheme, "%d-%d", &pGsmBci[i]->fromCodeScheme,
                 &pGsmBci[i]->toCodeScheme);
+            if (ret < 0) {
+                RLOGE("requestGetSmsBroadcastConfig sscanf error");
+                ril_err = RIL_E_GENERIC_FAILURE;
+                goto on_exit;
+            }
         }
 
         pGsmBci[i]->selected = (mode == 0 ? false : true);
     }
 
-    RIL_onRequestComplete(t, RIL_E_SUCCESS, pGsmBci,
-        (commas + 1) * sizeof(RIL_GSM_BroadcastSmsConfigInfo*));
+on_exit:
+    RIL_onRequestComplete(t, ril_err, ril_err == RIL_E_SUCCESS ? pGsmBci : NULL,
+        ril_err == RIL_E_SUCCESS ? (commas + 1) * sizeof(RIL_GSM_BroadcastSmsConfigInfo*) : 0);
     at_response_free(p_response);
-    return;
-
-error:
-    at_response_free(p_response);
-    RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
 }
 
 static void setGsmBroadcastConfigData(int from, int to, int id, int outStrSize, char* outStr)
@@ -355,18 +433,28 @@ static void setGsmBroadcastConfigData(int from, int to, int id, int outStrSize, 
     }
 }
 
-static void requestSetSmsBroadcastConfig(void* data, size_t datalen,
-    RIL_Token t)
+static void requestSetSmsBroadcastConfig(void* data, size_t datalen, RIL_Token t)
 {
     int i = 0;
     int count = datalen / sizeof(RIL_GSM_BroadcastSmsConfigInfo*);
     int size = count * 16;
-    char cmd[256] = { 0 };
+    int ret = -1;
+    int err = -1;
+    char* cmd = NULL;
     char* channel = (char*)alloca(size);
     char* languageId = (char*)alloca(size);
     ATResponse* p_response = NULL;
-    RIL_GSM_BroadcastSmsConfigInfo** pGsmBci = (RIL_GSM_BroadcastSmsConfigInfo**)data;
+    RIL_Errno ril_err = RIL_E_SUCCESS;
+    RIL_GSM_BroadcastSmsConfigInfo** pGsmBci = NULL;
     RIL_GSM_BroadcastSmsConfigInfo gsmBci = { 0 };
+
+    if (data == NULL) {
+        RLOGE("requestSetSmsBroadcastConfig data is null");
+        RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
+        return;
+    }
+
+    pGsmBci = (RIL_GSM_BroadcastSmsConfigInfo**)data;
 
     memset(channel, 0, size);
     memset(languageId, 0, size);
@@ -380,18 +468,25 @@ static void requestSetSmsBroadcastConfig(void* data, size_t datalen,
             size, languageId);
     }
 
-    snprintf(cmd, sizeof(cmd), "AT+CSCB=%d,\"%s\",\"%s\"",
+    ret = asprintf(&cmd, "AT+CSCB=%d,\"%s\",\"%s\"",
         (*pGsmBci[0]).selected ? 0 : 1, channel, languageId);
-    int err = at_send_command_singleline(cmd, "+CSCB:", &p_response);
-
-    if (err < 0 || p_response->success == 0) {
-        RLOGE("Failure occurred in sending %s due to: %s", cmd, at_io_err_str(err));
-        RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
-    } else {
-        RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
+    if (ret < 0) {
+        RLOGE("Failed to allocate memory");
+        ril_err = RIL_E_NO_MEMORY;
+        goto on_exit;
     }
 
+    err = at_send_command_singleline(cmd, "+CSCB:", &p_response);
+    if (err != AT_ERROR_OK || !p_response || p_response->success != AT_OK) {
+        RLOGE("Failure occurred in sending %s due to: %s", cmd, at_io_err_str(err));
+        ril_err = RIL_E_GENERIC_FAILURE;
+        goto on_exit;
+    }
+
+on_exit:
+    RIL_onRequestComplete(t, ril_err, NULL, 0);
     at_response_free(p_response);
+    free(cmd);
 }
 
 static void requestGetSmscAddress(void* data, size_t datalen, RIL_Token t)
@@ -400,37 +495,43 @@ static void requestGetSmscAddress(void* data, size_t datalen, RIL_Token t)
     (void)datalen;
 
     ATResponse* p_response = NULL;
-    int err = -1;
+    RIL_Errno ril_err = RIL_E_SUCCESS;
     char* decidata = NULL;
+    int err = -1;
 
     err = at_send_command_singleline("AT+CSCA?", "+CSCA:", &p_response);
-    if (err < 0 || p_response->success == 0) {
+    if (err != AT_ERROR_OK || !p_response || p_response->success != AT_OK) {
         RLOGE("Failure occurred in sending %s due to: %s", "AT+CSCA?", at_io_err_str(err));
-        goto error;
+        ril_err = RIL_E_GENERIC_FAILURE;
+        goto on_exit;
     }
 
     char* line = p_response->p_intermediates->line;
     err = at_tok_start(&line);
-    if (err < 0)
-        goto error;
+    if (err < 0) {
+        RLOGE("Fail to parse line in %s", __func__);
+        ril_err = RIL_E_GENERIC_FAILURE;
+        goto on_exit;
+    }
 
     err = at_tok_nextstr(&line, &decidata);
-    if (err < 0)
-        goto error;
+    if (err < 0) {
+        RLOGE("Fail to parse decidata in %s", __func__);
+        ril_err = RIL_E_GENERIC_FAILURE;
+        goto on_exit;
+    }
 
-    RIL_onRequestComplete(t, RIL_E_SUCCESS, decidata, strlen(decidata) + 1);
-    at_response_free(p_response);
-    return;
-
-error:
-    RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
+on_exit:
+    RIL_onRequestComplete(t, ril_err, ril_err == RIL_E_SUCCESS ? decidata : NULL,
+        ril_err == RIL_E_SUCCESS ? strlen(decidata) + 1 : 0);
     at_response_free(p_response);
 }
 
 static void requestSetSmscAddress(void* data, size_t datalen, RIL_Token t)
 {
     ATResponse* p_response = NULL;
-    char cmd[64] = { 0 };
+    RIL_Errno ril_err = RIL_E_SUCCESS;
+    char* cmd = NULL;
     int err = -1;
 
     if (getSIMStatus() != SIM_READY) {
@@ -444,37 +545,55 @@ static void requestSetSmscAddress(void* data, size_t datalen, RIL_Token t)
         return;
     }
 
-    snprintf(cmd, sizeof(cmd), "AT+CSCA=%s,%d", (char*)data, (int)datalen);
-    err = at_send_command(cmd, &p_response);
-    if (err < 0 || p_response->success == 0) {
-        RLOGE("Failure occurred in sending %s due to: %s", cmd, at_io_err_str(err));
-        RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
-    } else {
-        RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
+    if (asprintf(&cmd, "AT+CSCA=%s,%d", (char*)data, (int)datalen) < 0) {
+        RLOGE("Failed to allocate memory");
+        ril_err = RIL_E_NO_MEMORY;
+        goto on_exit;
     }
 
+    err = at_send_command(cmd, &p_response);
+    if (err != AT_ERROR_OK || !p_response || p_response->success != AT_OK) {
+        RLOGE("Failure occurred in sending %s due to: %s", cmd, at_io_err_str(err));
+        ril_err = RIL_E_GENERIC_FAILURE;
+        goto on_exit;
+    }
+
+on_exit:
+    RIL_onRequestComplete(t, ril_err, NULL, 0);
     at_response_free(p_response);
+    free(cmd);
 }
 
 static void requestDeleteSmsOnSim(void* data, size_t datalen, RIL_Token t)
 {
     ATResponse* p_response = NULL;
+    RIL_Errno ril_err = RIL_E_SUCCESS;
+    char* cmd = NULL;
     int err = -1;
 
-    char* cmd;
-    p_response = NULL;
-    asprintf(&cmd, "AT+CMGD=%d", ((int*)data)[0]);
-    err = at_send_command(cmd, &p_response);
-    free(cmd);
-
-    if (err < 0 || p_response->success == 0) {
-        RLOGE("Failure occurred in sending %s due to: %s", "AT+CMGD=%d", at_io_err_str(err));
+    if (data == NULL) {
+        RLOGE("requestDeleteSmsOnSim data is null");
         RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
-    } else {
-        RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
+        return;
     }
 
+    if (asprintf(&cmd, "AT+CMGD=%d", ((int*)data)[0]) < 0) {
+        RLOGE("Failed to allocate memory");
+        ril_err = RIL_E_NO_MEMORY;
+        goto on_exit;
+    }
+
+    err = at_send_command(cmd, &p_response);
+    if (err != AT_ERROR_OK || !p_response || p_response->success != AT_OK) {
+        RLOGE("Failure occurred in sending %s due to: %s", "AT+CMGD=%d", at_io_err_str(err));
+        ril_err = RIL_E_GENERIC_FAILURE;
+        goto on_exit;
+    }
+
+on_exit:
+    RIL_onRequestComplete(t, ril_err, NULL, 0);
     at_response_free(p_response);
+    free(cmd);
 }
 
 void on_request_sms(int request, void* data, size_t datalen, RIL_Token t)
