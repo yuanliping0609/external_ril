@@ -80,36 +80,6 @@ on_exit:
     free(cmd);
 }
 
-static void requestCdmaSendSMS(void* data, size_t datalen, RIL_Token t)
-{
-    int err = 1; // Set to go to error:
-    RIL_SMS_Response response;
-
-    memset(&response, 0, sizeof(response));
-    if (getSIMStatus() == SIM_ABSENT) {
-        RIL_onRequestComplete(t, RIL_E_SIM_ABSENT, NULL, 0);
-        return;
-    }
-
-    RLOGD("requestCdmaSendSMS datalen=%zu, sizeof(RIL_CDMA_SMS_Message)=%zu",
-        datalen, sizeof(RIL_CDMA_SMS_Message));
-
-    if (err != 0)
-        goto error;
-
-    // Cdma Send SMS implementation will go here:
-    // But it is not implemented yet.
-
-    response.messageRef = 1;
-    RIL_onRequestComplete(t, RIL_E_SUCCESS, &response, sizeof(response));
-    return;
-
-error:
-    // Cdma Send SMS will always cause send retry error.
-    response.messageRef = -1;
-    RIL_onRequestComplete(t, RIL_E_SMS_SEND_FAIL_RETRY, &response, sizeof(response));
-}
-
 static void requestSendSMS(void* data, size_t datalen, RIL_Token t)
 {
     int err;
@@ -238,9 +208,6 @@ static void requestImsSendSMS(void* data, size_t datalen, RIL_Token t)
 
     if (RADIO_TECH_3GPP == p_args->tech) {
         return requestSendSMS(p_args->message.gsmMessage,
-            datalen - sizeof(RIL_RadioTechnologyFamily), t);
-    } else if (RADIO_TECH_3GPP2 == p_args->tech) {
-        return requestCdmaSendSMS(p_args->message.cdmaMessage,
             datalen - sizeof(RIL_RadioTechnologyFamily), t);
     } else {
         RLOGE("requestImsSendSMS invalid format value =%d", p_args->tech);

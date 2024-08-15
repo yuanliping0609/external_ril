@@ -197,25 +197,8 @@ static inline req_category_t request2eventtype(int request)
     case RIL_REQUEST_STK_SET_PROFILE:
     case RIL_REQUEST_STK_HANDLE_CALL_SETUP_REQUESTED_FROM_SIM:
     case RIL_REQUEST_EXPLICIT_CALL_TRANSFER:
-    case RIL_REQUEST_CDMA_SET_SUBSCRIPTION_SOURCE:
-    case RIL_REQUEST_CDMA_SET_ROAMING_PREFERENCE:
-    case RIL_REQUEST_CDMA_QUERY_ROAMING_PREFERENCE:
-    case RIL_REQUEST_CDMA_SET_PREFERRED_VOICE_PRIVACY_MODE:
-    case RIL_REQUEST_CDMA_QUERY_PREFERRED_VOICE_PRIVACY_MODE:
-    case RIL_REQUEST_CDMA_FLASH:
-    case RIL_REQUEST_CDMA_BURST_DTMF:
-    case RIL_REQUEST_CDMA_VALIDATE_AND_WRITE_AKEY:
-    case RIL_REQUEST_CDMA_SEND_SMS:
-    case RIL_REQUEST_CDMA_SMS_ACKNOWLEDGE:
     case RIL_REQUEST_GSM_SMS_BROADCAST_ACTIVATION:
-    case RIL_REQUEST_CDMA_GET_BROADCAST_SMS_CONFIG:
-    case RIL_REQUEST_CDMA_SET_BROADCAST_SMS_CONFIG:
-    case RIL_REQUEST_CDMA_SMS_BROADCAST_ACTIVATION:
-    case RIL_REQUEST_CDMA_SUBSCRIPTION:
-    case RIL_REQUEST_CDMA_WRITE_SMS_TO_RUIM:
-    case RIL_REQUEST_CDMA_DELETE_SMS_ON_RUIM:
     case RIL_REQUEST_REPORT_SMS_MEMORY_STATUS:
-    case RIL_REQUEST_CDMA_GET_SUBSCRIPTION_SOURCE:
     case RIL_REQUEST_ISIM_AUTHENTICATION:
     case RIL_REQUEST_ACKNOWLEDGE_INCOMING_GSM_SMS_WITH_PDU:
     case RIL_REQUEST_STK_SEND_ENVELOPE_WITH_STATUS:
@@ -294,11 +277,9 @@ static int is_multimode_modem(ModemInfo* mdm)
     return 0;
 }
 
-/* Find out if our modem is GSM, CDMA or both (Multimode) */
+/* Find out if our modem is GSM, LTE or both (Multimode) */
 static void probeForModemMode(ModemInfo* info)
 {
-    ATResponse* p_response = NULL;
-    int err = -1;
     assert(info);
     // Currently, our only known multimode modem is qemu's android modem,
     // which implements the AT+CTEC command to query and set mode.
@@ -313,22 +294,10 @@ static void probeForModemMode(ModemInfo* info)
     /* Being here means that our modem is not multimode */
     info->isMultimode = 0;
 
-    /* CDMA Modems implement the AT+WNAM command */
-    err = at_send_command_singleline("AT+WNAM", "+WNAM:", &p_response);
-    if (!err && p_response && p_response->success) {
-        at_response_free(p_response);
-        // TODO: find out if we really support EvDo
-        info->supportedTechs = MDM_CDMA | MDM_EVDO;
-        info->currentTech = MDM_CDMA;
-        RLOGI("Found CDMA Modem");
-        return;
-    }
-
-    at_response_free(p_response);
-    // TODO: find out if modem really supports WCDMA/LTE
-    info->supportedTechs = MDM_GSM | MDM_WCDMA | MDM_LTE;
-    info->currentTech = MDM_GSM;
-    RLOGI("Found GSM Modem");
+    // TODO: find out if modem really supports LTE
+    info->supportedTechs = MDM_GSM | MDM_LTE;
+    info->currentTech = MDM_LTE;
+    RLOGI("Found LTE Modem");
 }
 
 static void waitForClose(void)
@@ -650,12 +619,6 @@ static void onRequest(int request, void* data, size_t datalen, RIL_Token t)
     if (getRadioState() == RADIO_STATE_OFF) {
         switch (request) {
         case RIL_REQUEST_BASEBAND_VERSION:
-        case RIL_REQUEST_CDMA_GET_SUBSCRIPTION_SOURCE:
-        case RIL_REQUEST_CDMA_QUERY_PREFERRED_VOICE_PRIVACY_MODE:
-        case RIL_REQUEST_CDMA_SET_PREFERRED_VOICE_PRIVACY_MODE:
-        case RIL_REQUEST_CDMA_SET_ROAMING_PREFERENCE:
-        case RIL_REQUEST_CDMA_SET_SUBSCRIPTION_SOURCE:
-        case RIL_REQUEST_CDMA_SUBSCRIPTION:
         case RIL_REQUEST_DEVICE_IDENTITY:
         case RIL_REQUEST_EXIT_EMERGENCY_CALLBACK_MODE:
         case RIL_REQUEST_GET_ACTIVITY_INFO:

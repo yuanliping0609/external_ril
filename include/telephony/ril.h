@@ -19,7 +19,6 @@
 
 #include <stdint.h>
 #include <stdlib.h>
-#include <telephony/ril_cdma_sms.h>
 
 #ifndef FEATURE_UNIT_TEST
 #include <sys/time.h>
@@ -44,12 +43,10 @@ extern "C" {
  * Documentation of RIL version and associated changes
  * RIL_VERSION = 12 : Updated data structures: RIL_Data_Call_Response_v11,
  *                    RIL_SIM_IO_v6, RIL_CardStatus_v6,
- *                    RIL_SimRefreshResponse_v7, RIL_CDMA_CallWaiting_v6,
- *                    RIL_LTE_SignalStrength_v8, RIL_SignalStrength_v10,
- *                    RIL_CellIdentityGsm_v12, RIL_CellIdentityWcdma_v12,
+ *                    RIL_SimRefreshResponse_v7, RIL_LTE_SignalStrength_v8,
+ *                    RIL_SignalStrength_v10, RIL_CellIdentityGsm_v12,
  *                    RIL_CellIdentityLte_v12, RIL_CellInfoGsm_v12,
- *                    RIL_CellInfoWcdma_v12, RIL_CellInfoLte_v12,
- *                    RIL_CellInfo_v12
+ *                    RIL_CellInfoLte_v12, RIL_CellInfo_v12
  *
  * RIL_VERSION = 13 : This version includes new wakelock semantics and as the
  *                    first strongly versioned version it enforces structure
@@ -82,7 +79,6 @@ extern "C" {
  *                    RIL_REQUEST_ENABLE_UICC_APPLICATIONS
  *                    RIL_REQUEST_ARE_UICC_APPLICATIONS_ENABLED
  *                    RIL_REQUEST_ENTER_SIM_DEPERSONALIZATION
- *                    RIL_REQUEST_CDMA_SEND_SMS_EXPECT_MORE
  *                    New parameters for RIL_REQUEST_SETUP_DATA_CALL
  *                    Updated data structures: RIL_DataProfileInfo_v15,
  *                    RIL_InitialAttachApn_v15, RIL_Data_Call_Response_v12
@@ -110,9 +106,6 @@ extern "C" {
 #define RIL_VERSION 15
 #define LAST_IMPRECISE_RIL_VERSION 15 // Better self-documented name
 #define RIL_VERSION_MIN 15 /* Minimum RIL_VERSION supported */
-
-#define CDMA_ALPHA_INFO_BUFFER_LENGTH 64
-#define CDMA_NUMBER_INFO_BUFFER_LENGTH 81
 
 #define MAX_RILDS 3
 #define MAX_SOCKET_NAME_LENGTH 6
@@ -345,12 +338,6 @@ typedef enum {
     PREF_NET_TYPE_LTE_WCDMA = 12 /* LTE/WCDMA */
 } RIL_PreferredNetworkType;
 
-/* Source for cdma subscription */
-typedef enum {
-    CDMA_SUBSCRIPTION_SOURCE_RUIM_SIM = 0,
-    CDMA_SUBSCRIPTION_SOURCE_NV = 1
-} RIL_CdmaSubscriptionSource;
-
 /* User-to-User signaling Info activation types derived from 3GPP 23.087 v8.0 */
 typedef enum {
     RIL_UUS_TYPE1_IMPLICIT = 0,
@@ -383,14 +370,6 @@ typedef struct {
     int uusLength; /* Length of UUS Data */
     char* uusData; /* UUS Data */
 } RIL_UUS_Info;
-
-/* CDMA Signal Information Record as defined in C.S0005 section 3.7.5.5 */
-typedef struct {
-    char isPresent; /* non-zero if signal information record is present */
-    char signalType; /* as defined 3.7.5.5-1 */
-    char alertPitch; /* as defined 3.7.5.5-2 */
-    char signal; /* as defined 3.7.5.5-3, 3.7.5.5-4 or 3.7.5.5-5 */
-} RIL_CDMA_SignalInfoRecord;
 
 typedef struct {
     RIL_CallState state;
@@ -468,9 +447,6 @@ typedef struct {
                      * corresponding to failed MO SMS. */
 
     union {
-        /* Valid field if tech is RADIO_TECH_3GPP2. See RIL_REQUEST_CDMA_SEND_SMS */
-        RIL_CDMA_SMS_Message* cdmaMessage;
-
         /* Valid field if tech is RADIO_TECH_3GPP. See RIL_REQUEST_SEND_SMS */
         char** gsmMessage; /* This is an array of pointers where pointers
                             * are contiguous but elements pointed by those pointers
@@ -674,17 +650,6 @@ typedef enum {
     CALL_FAIL_RADIO_RELEASE_ABNORMAL = 259, /* RRC connection release, abnormal */
     CALL_FAIL_ACCESS_CLASS_BLOCKED = 260, /* Access class barring */
     CALL_FAIL_NETWORK_DETACH = 261, /* Explicit network detach */
-    CALL_FAIL_CDMA_LOCKED_UNTIL_POWER_CYCLE = 1000,
-    CALL_FAIL_CDMA_DROP = 1001,
-    CALL_FAIL_CDMA_INTERCEPT = 1002,
-    CALL_FAIL_CDMA_REORDER = 1003,
-    CALL_FAIL_CDMA_SO_REJECT = 1004,
-    CALL_FAIL_CDMA_RETRY_ORDER = 1005,
-    CALL_FAIL_CDMA_ACCESS_FAILURE = 1006,
-    CALL_FAIL_CDMA_PREEMPTED = 1007,
-    CALL_FAIL_CDMA_NOT_EMERGENCY = 1008, /* For non-emergency number dialed
-                                          * during emergency callback mode */
-    CALL_FAIL_CDMA_ACCESS_BLOCKED = 1009, /* CDMA network access probes blocked */
 
     /* OEM specific error codes. Used to distinguish error from
      * CALL_FAIL_ERROR_UNSPECIFIED and help assist debugging */
@@ -1061,25 +1026,6 @@ typedef struct {
     /*     For SIM_RESET result it is NULL. */
 } RIL_SimRefreshResponse_v7;
 
-/* Deprecated, use RIL_CDMA_CallWaiting_v6 */
-typedef struct {
-    char* number; /* Remote party number */
-    int numberPresentation; /* 0=Allowed, 1=Restricted, 2=Not Specified/Unknown */
-    char* name; /* Remote party name */
-    RIL_CDMA_SignalInfoRecord signalInfoRecord;
-} RIL_CDMA_CallWaiting_v5;
-
-typedef struct {
-    char* number; /* Remote party number */
-    int numberPresentation; /* 0=Allowed, 1=Restricted, 2=Not Specified/Unknown */
-    char* name; /* Remote party name */
-    RIL_CDMA_SignalInfoRecord signalInfoRecord;
-    /* Number type/Number plan required to support International Call Waiting */
-    int number_type; /* 0=Unknown, 1=International, 2=National,
-                      * 3=Network specific, 4=subscriber */
-    int number_plan; /* 0=Unknown, 1=ISDN, 3=Data, 4=Telex, 8=Nat'l, 9=Private */
-} RIL_CDMA_CallWaiting_v6;
-
 typedef struct {
     int reg_state;
     int service_type;
@@ -1123,22 +1069,6 @@ typedef struct {
 #define RIL_RESTRICTED_STATE_CS_ALL 0x04
 /* Block packet data access due to restriction. */
 #define RIL_RESTRICTED_STATE_PS_ALL 0x10
-
-/* The status for an OTASP/OTAPA session */
-typedef enum {
-    CDMA_OTA_PROVISION_STATUS_SPL_UNLOCKED,
-    CDMA_OTA_PROVISION_STATUS_SPC_RETRIES_EXCEEDED,
-    CDMA_OTA_PROVISION_STATUS_A_KEY_EXCHANGED,
-    CDMA_OTA_PROVISION_STATUS_SSD_UPDATED,
-    CDMA_OTA_PROVISION_STATUS_NAM_DOWNLOADED,
-    CDMA_OTA_PROVISION_STATUS_MDN_DOWNLOADED,
-    CDMA_OTA_PROVISION_STATUS_IMSI_DOWNLOADED,
-    CDMA_OTA_PROVISION_STATUS_PRL_DOWNLOADED,
-    CDMA_OTA_PROVISION_STATUS_COMMITTED,
-    CDMA_OTA_PROVISION_STATUS_OTAPA_STARTED,
-    CDMA_OTA_PROVISION_STATUS_OTAPA_STOPPED,
-    CDMA_OTA_PROVISION_STATUS_OTAPA_ABORTED
-} RIL_CDMA_OTA_ProvisionStatus;
 
 typedef struct {
     int signalStrength; /* Valid values are (0-31, 99) as defined in TS 27.007 8.5 */
@@ -4157,87 +4087,6 @@ typedef struct {
 #define RIL_REQUEST_SET_LOCATION_UPDATES 76
 
 /**
- * RIL_REQUEST_CDMA_SET_SUBSCRIPTION_SOURCE
- *
- * Request to set the location where the CDMA subscription shall
- * be retrieved
- *
- * "data" is int *
- * ((int *)data)[0] is == RIL_CdmaSubscriptionSource
- *
- * "response" is NULL
- *
- * Valid errors:
- *  SUCCESS
- *  RADIO_NOT_AVAILABLE
- *  SIM_ABSENT
- *  SUBSCRIPTION_NOT_AVAILABLE
- *  INTERNAL_ERR
- *  NO_MEMORY
- *  NO_RESOURCES
- *  CANCELLED
- *  REQUEST_NOT_SUPPORTED
- *
- * See also: RIL_REQUEST_CDMA_GET_SUBSCRIPTION_SOURCE
- */
-#define RIL_REQUEST_CDMA_SET_SUBSCRIPTION_SOURCE 77
-
-/**
- * RIL_REQUEST_CDMA_SET_ROAMING_PREFERENCE
- *
- * Request to set the roaming preferences in CDMA
- *
- * "data" is int *
- * ((int *)data)[0] is == 0 for Home Networks only, as defined in PRL
- * ((int *)data)[0] is == 1 for Roaming on Affiliated networks, as defined in PRL
- * ((int *)data)[0] is == 2 for Roaming on Any Network, as defined in the PRL
- *
- * "response" is NULL
- *
- * Valid errors:
- *  SUCCESS
- *  RADIO_NOT_AVAILABLE
- *  NO_MEMORY
- *  INTERNAL_ERR
- *  SYSTEM_ERR
- *  INVALID_ARGUMENTS
- *  MODEM_ERR
- *  REQUEST_NOT_SUPPORTED
- *  OPERATION_NOT_ALLOWED
- *  NO_RESOURCES
- *  CANCELLED
- */
-#define RIL_REQUEST_CDMA_SET_ROAMING_PREFERENCE 78
-
-/**
- * RIL_REQUEST_CDMA_QUERY_ROAMING_PREFERENCE
- *
- * Request the actual setting of the roaming preferences in CDMA in the modem
- *
- * "data" is NULL
- *
- * "response" is int *
- * ((int *)response)[0] is == 0 for Home Networks only, as defined in PRL
- * ((int *)response)[0] is == 1 for Roaming on Affiliated networks, as defined in PRL
- * ((int *)response)[0] is == 2 for Roaming on Any Network, as defined in the PRL
- *
- * "response" is NULL
- *
- * Valid errors:
- *  SUCCESS
- *  RADIO_NOT_AVAILABLE
- *  NO_MEMORY
- *  INTERNAL_ERR
- *  SYSTEM_ERR
- *  INVALID_ARGUMENTS
- *  MODEM_ERR
- *  REQUEST_NOT_SUPPORTED
- *  NO_RESOURCES
- *  CANCELLED
- */
-#define RIL_REQUEST_CDMA_QUERY_ROAMING_PREFERENCE 79
-
-/**
  * RIL_REQUEST_SET_TTY_MODE
  *
  * Request to set the TTY mode
@@ -4294,217 +4143,6 @@ typedef struct {
  *  REQUEST_NOT_SUPPORTED
  */
 #define RIL_REQUEST_QUERY_TTY_MODE 81
-
-/**
- * RIL_REQUEST_CDMA_SET_PREFERRED_VOICE_PRIVACY_MODE
- *
- * Request to set the preferred voice privacy mode used in voice
- * scrambling
- *
- * "data" is int *
- * ((int *)data)[0] is == 0 for Standard Privacy Mode (Public Long Code Mask)
- * ((int *)data)[0] is == 1 for Enhanced Privacy Mode (Private Long Code Mask)
- *
- * "response" is NULL
- *
- * Valid errors:
- *  SUCCESS
- *  RADIO_NOT_AVAILABLE
- *  INVALID_ARGUMENTS
- *  SYSTEM_ERR
- *  MODEM_ERR
- *  INTERNAL_ERR
- *  NO_MEMORY
- *  INVALID_CALL_ID
- *  NO_RESOURCES
- *  CANCELLED
- *  REQUEST_NOT_SUPPORTED
- */
-#define RIL_REQUEST_CDMA_SET_PREFERRED_VOICE_PRIVACY_MODE 82
-
-/**
- * RIL_REQUEST_CDMA_QUERY_PREFERRED_VOICE_PRIVACY_MODE
- *
- * Request the setting of preferred voice privacy mode
- *
- * "data" is NULL
- *
- * "response" is int *
- * ((int *)response)[0] is == 0 for Standard Privacy Mode (Public Long Code Mask)
- * ((int *)response)[0] is == 1 for Enhanced Privacy Mode (Private Long Code Mask)
- *
- * "response" is NULL
- *
- * Valid errors:
- *  SUCCESS
- *  RADIO_NOT_AVAILABLE
- *  MODEM_ERR
- *  INTERNAL_ERR
- *  NO_MEMORY
- *  INVALID_ARGUMENTS
- *  NO_RESOURCES
- *  CANCELLED
- *  REQUEST_NOT_SUPPORTED
- */
-#define RIL_REQUEST_CDMA_QUERY_PREFERRED_VOICE_PRIVACY_MODE 83
-
-/**
- * RIL_REQUEST_CDMA_FLASH
- *
- * Send FLASH
- *
- * "data" is const char *
- * ((const char *)data)[0] is a FLASH string
- *
- * "response" is NULL
- *
- * Valid errors:
- *  SUCCESS
- *  RADIO_NOT_AVAILABLE
- *  INVALID_ARGUMENTS
- *  NO_MEMORY
- *  SYSTEM_ERR
- *  MODEM_ERR
- *  INTERNAL_ERR
- *  INVALID_CALL_ID
- *  INVALID_STATE
- *  NO_RESOURCES
- *  CANCELLED
- *  REQUEST_NOT_SUPPORTED
- *
- */
-#define RIL_REQUEST_CDMA_FLASH 84
-
-/**
- * RIL_REQUEST_CDMA_BURST_DTMF
- *
- * Send DTMF string
- *
- * "data" is const char **
- * ((const char **)data)[0] is a DTMF string
- * ((const char **)data)[1] is the DTMF ON length in milliseconds, or 0 to use
- *                          default
- * ((const char **)data)[2] is the DTMF OFF length in milliseconds, or 0 to use
- *                          default
- *
- * "response" is NULL
- *
- * Valid errors:
- *  SUCCESS
- *  RADIO_NOT_AVAILABLE
- *  INVALID_ARGUMENTS
- *  NO_MEMORY
- *  SYSTEM_ERR
- *  MODEM_ERR
- *  INTERNAL_ERR
- *  INVALID_CALL_ID
- *  NO_RESOURCES
- *  CANCELLED
- *  OPERATION_NOT_ALLOWED
- *  REQUEST_NOT_SUPPORTED
- *
- */
-#define RIL_REQUEST_CDMA_BURST_DTMF 85
-
-/**
- * RIL_REQUEST_CDMA_VALIDATE_AND_WRITE_AKEY
- *
- * Takes a 26 digit string (20 digit AKEY + 6 digit checksum).
- * If the checksum is valid the 20 digit AKEY is written to NV,
- * replacing the existing AKEY no matter what it was before.
- *
- * "data" is const char *
- * ((const char *)data)[0] is a 26 digit string (ASCII digits '0'-'9')
- *                         where the last 6 digits are a checksum of the
- *                         first 20, as specified in TR45.AHAG
- *                         "Common Cryptographic Algorithms, Revision D.1
- *                         Section 2.2"
- *
- * "response" is NULL
- *
- * Valid errors:
- *  SUCCESS
- *  RADIO_NOT_AVAILABLE
- *  NO_MEMORY
- *  INTERNAL_ERR
- *  SYSTEM_ERR
- *  INVALID_ARGUMENTS
- *  MODEM_ERR
- *  REQUEST_NOT_SUPPORTED
- *  NO_RESOURCES
- *  CANCELLED
- *
- */
-#define RIL_REQUEST_CDMA_VALIDATE_AND_WRITE_AKEY 86
-
-/**
- * RIL_REQUEST_CDMA_SEND_SMS
- *
- * Send a CDMA SMS message
- *
- * "data" is const RIL_CDMA_SMS_Message *
- *
- * "response" is a const RIL_SMS_Response *
- *
- * Based on the return error, caller decides to resend if sending sms
- * fails. The CDMA error class is derived as follows,
- * SUCCESS is error class 0 (no error)
- * SMS_SEND_FAIL_RETRY is error class 2 (temporary failure)
- *
- * Valid errors:
- *  SUCCESS
- *  RADIO_NOT_AVAILABLE
- *  SMS_SEND_FAIL_RETRY
- *  NETWORK_REJECT
- *  INVALID_STATE
- *  INVALID_ARGUMENTS
- *  NO_MEMORY
- *  REQUEST_RATE_LIMITED
- *  INVALID_SMS_FORMAT
- *  SYSTEM_ERR
- *  FDN_CHECK_FAILURE
- *  MODEM_ERR
- *  NETWORK_ERR
- *  ENCODING_ERR
- *  INVALID_SMSC_ADDRESS
- *  OPERATION_NOT_ALLOWED
- *  NO_RESOURCES
- *  CANCELLED
- *  REQUEST_NOT_SUPPORTED
- *  MODE_NOT_SUPPORTED
- *  SIM_ABSENT
- *
- */
-#define RIL_REQUEST_CDMA_SEND_SMS 87
-
-/**
- * RIL_REQUEST_CDMA_SMS_ACKNOWLEDGE
- *
- * Acknowledge the success or failure in the receipt of SMS
- * previously indicated via RIL_UNSOL_RESPONSE_CDMA_NEW_SMS
- *
- * "data" is const RIL_CDMA_SMS_Ack *
- *
- * "response" is NULL
- *
- * Valid errors:
- *  SUCCESS
- *  RADIO_NOT_AVAILABLE
- *  INVALID_ARGUMENTS
- *  NO_SMS_TO_ACK
- *  INVALID_STATE
- *  NO_MEMORY
- *  REQUEST_RATE_LIMITED
- *  SYSTEM_ERR
- *  MODEM_ERR
- *  INVALID_STATE
- *  OPERATION_NOT_ALLOWED
- *  NETWORK_NOT_READY
- *  INVALID_MODEM_STATE
- *  REQUEST_NOT_SUPPORTED
- *
- */
-#define RIL_REQUEST_CDMA_SMS_ACKNOWLEDGE 88
 
 /**
  * RIL_REQUEST_GSM_GET_BROADCAST_SMS_CONFIG
@@ -4592,193 +4230,6 @@ typedef struct {
  *
  */
 #define RIL_REQUEST_GSM_SMS_BROADCAST_ACTIVATION 91
-
-/**
- * RIL_REQUEST_CDMA_GET_BROADCAST_SMS_CONFIG
- *
- * Request the setting of CDMA Broadcast SMS config
- *
- * "data" is NULL
- *
- * "response" is a const RIL_CDMA_BroadcastSmsConfigInfo **
- * "responselen" is count * sizeof (RIL_CDMA_BroadcastSmsConfigInfo *)
- *
- * Valid errors:
- *  SUCCESS
- *  RADIO_NOT_AVAILABLE
- *  INVALID_STATE
- *  NO_MEMORY
- *  REQUEST_RATE_LIMITED
- *  SYSTEM_ERR
- *  NO_RESOURCES
- *  MODEM_ERR
- *  SYSTEM_ERR
- *  INTERNAL_ERR
- *  NO_RESOURCES
- *  CANCELLED
- *  INVALID_MODEM_STATE
- *  REQUEST_NOT_SUPPORTED
- *
- */
-#define RIL_REQUEST_CDMA_GET_BROADCAST_SMS_CONFIG 92
-
-/**
- * RIL_REQUEST_CDMA_SET_BROADCAST_SMS_CONFIG
- *
- * Set CDMA Broadcast SMS config
- *
- * "data" is a const RIL_CDMA_BroadcastSmsConfigInfo **
- * "datalen" is count * sizeof(const RIL_CDMA_BroadcastSmsConfigInfo *)
- *
- * "response" is NULL
- *
- * Valid errors:
- *  SUCCESS
- *  RADIO_NOT_AVAILABLE
- *  INVALID_STATE
- *  INVALID_ARGUMENTS
- *  NO_MEMORY
- *  SYSTEM_ERR
- *  REQUEST_RATE_LIMITED
- *  MODEM_ERR
- *  SYSTEM_ERR
- *  INTERNAL_ERR
- *  NO_RESOURCES
- *  CANCELLED
- *  INVALID_MODEM_STATE
- *  REQUEST_NOT_SUPPORTED
- *
- */
-#define RIL_REQUEST_CDMA_SET_BROADCAST_SMS_CONFIG 93
-
-/**
- * RIL_REQUEST_CDMA_SMS_BROADCAST_ACTIVATION
- *
- * Enable or disable the reception of CDMA Broadcast SMS
- *
- * "data" is const int *
- * (const int *)data[0] indicates to activate or turn off the
- * reception of CDMA Broadcast SMS, 0-1,
- *                       0 - Activate, 1 - Turn off
- *
- * "response" is NULL
- *
- * Valid errors:
- *  SUCCESS
- *  RADIO_NOT_AVAILABLE
- *  INVALID_STATE
- *  INVALID_ARGUMENTS
- *  NO_MEMORY
- *  SYSTEM_ERR
- *  REQUEST_RATE_LIMITED
- *  MODEM_ERR
- *  INTERNAL_ERR
- *  NO_RESOURCES
- *  CANCELLED
- *  INVALID_MODEM_STATE
- *  REQUEST_NOT_SUPPORTED
- *
- */
-#define RIL_REQUEST_CDMA_SMS_BROADCAST_ACTIVATION 94
-
-/**
- * RIL_REQUEST_CDMA_SUBSCRIPTION
- *
- * Request the device MDN / H_SID / H_NID.
- *
- * The request is only allowed when CDMA subscription is available.  When CDMA
- * subscription is changed, application layer should re-issue the request to
- * update the subscription information.
- *
- * If a NULL value is returned for any of the device id, it means that error
- * accessing the device.
- *
- * "response" is const char **
- * ((const char **)response)[0] is MDN if CDMA subscription is available
- * ((const char **)response)[1] is a comma separated list of H_SID (Home SID) if
- *                              CDMA subscription is available, in decimal format
- * ((const char **)response)[2] is a comma separated list of H_NID (Home NID) if
- *                              CDMA subscription is available, in decimal format
- * ((const char **)response)[3] is MIN (10 digits, MIN2+MIN1) if CDMA subscription is available
- * ((const char **)response)[4] is PRL version if CDMA subscription is available
- *
- * Valid errors:
- *  SUCCESS
- *  RIL_E_SUBSCRIPTION_NOT_AVAILABLE
- *  NO_MEMORY
- *  INTERNAL_ERR
- *  SYSTEM_ERR
- *  INVALID_ARGUMENTS
- *  MODEM_ERR
- *  NOT_PROVISIONED
- *  REQUEST_NOT_SUPPORTED
- *  INTERNAL_ERR
- *  NO_RESOURCES
- *  CANCELLED
- *
- */
-
-#define RIL_REQUEST_CDMA_SUBSCRIPTION 95
-
-/**
- * RIL_REQUEST_CDMA_WRITE_SMS_TO_RUIM
- *
- * Stores a CDMA SMS message to RUIM memory.
- *
- * "data" is RIL_CDMA_SMS_WriteArgs *
- *
- * "response" is int *
- * ((const int *)response)[0] is the record index where the message is stored.
- *
- * Valid errors:
- *  SUCCESS
- *  RADIO_NOT_AVAILABLE
- *  SIM_FULL
- *  INVALID_ARGUMENTS
- *  INVALID_SMS_FORMAT
- *  INTERNAL_ERR
- *  MODEM_ERR
- *  ENCODING_ERR
- *  NO_MEMORY
- *  NO_RESOURCES
- *  INVALID_MODEM_STATE
- *  OPERATION_NOT_ALLOWED
- *  INVALID_SMSC_ADDRESS
- *  CANCELLED
- *  INVALID_MODEM_STATE
- *  REQUEST_NOT_SUPPORTED
- *  SIM_ABSENT
- *
- */
-#define RIL_REQUEST_CDMA_WRITE_SMS_TO_RUIM 96
-
-/**
- * RIL_REQUEST_CDMA_DELETE_SMS_ON_RUIM
- *
- * Deletes a CDMA SMS message from RUIM memory.
- *
- * "data" is int  *
- * ((int *)data)[0] is the record index of the message to delete.
- *
- * "response" is NULL
- *
- * Valid errors:
- *  SUCCESS
- *  RADIO_NOT_AVAILABLE
- *  INVALID_ARGUMENTS
- *  NO_MEMORY
- *  REQUEST_RATE_LIMITED
- *  SYSTEM_ERR
- *  MODEM_ERR
- *  NO_SUCH_ENTRY
- *  INTERNAL_ERR
- *  NO_RESOURCES
- *  CANCELLED
- *  INVALID_MODEM_STATE
- *  REQUEST_NOT_SUPPORTED
- *  SIM_ABSENT
- */
-#define RIL_REQUEST_CDMA_DELETE_SMS_ON_RUIM 97
 
 /**
  * RIL_REQUEST_DEVICE_IDENTITY
@@ -4946,31 +4397,6 @@ typedef struct {
  *
  */
 #define RIL_REQUEST_REPORT_STK_SERVICE_IS_RUNNING 103
-
-/**
- * RIL_REQUEST_CDMA_GET_SUBSCRIPTION_SOURCE
- *
- * Request to query the location where the CDMA subscription shall
- * be retrieved
- *
- * "data" is NULL
- *
- * "response" is int *
- * ((int *)data)[0] is == RIL_CdmaSubscriptionSource
- *
- * Valid errors:
- *  SUCCESS
- *  RADIO_NOT_AVAILABLE
- *  SUBSCRIPTION_NOT_AVAILABLE
- *  INTERNAL_ERR
- *  NO_MEMORY
- *  NO_RESOURCES
- *  CANCELLED
- *  REQUEST_NOT_SUPPORTED
- *
- * See also: RIL_REQUEST_CDMA_SET_SUBSCRIPTION_SOURCE
- */
-#define RIL_REQUEST_CDMA_GET_SUBSCRIPTION_SOURCE 104
 
 /**
  * RIL_REQUEST_ISIM_AUTHENTICATION
@@ -5756,25 +5182,6 @@ RIL_REQUEST_IMS_REG_STATE_CHANGE
 #define RIL_UNSOL_SIM_REFRESH 1017
 
 /**
- * RIL_UNSOL_CALL_RING
- *
- * Ring indication for an incoming call (eg, RING or CRING event).
- * There must be at least one RIL_UNSOL_CALL_RING at the beginning
- * of a call and sending multiple is optional. If the system property
- * ro.telephony.call_ring.multiple is false then the upper layers
- * will generate the multiple events internally. Otherwise the vendor
- * ril must generate multiple RIL_UNSOL_CALL_RING if
- * ro.telephony.call_ring.multiple is true or if it is absent.
- *
- * The rate of these events is controlled by ro.telephony.call_ring.delay
- * and has a default value of 3000 (3 seconds) if absent.
- *
- * "data" is null for GSM
- * "data" is const RIL_CDMA_SignalInfoRecord * if CDMA
- */
-#define RIL_UNSOL_CALL_RING 1018
-
-/**
  * RIL_UNSOL_RESPONSE_SIM_STATUS_CHANGED
  *
  * Indicates that SIM state changes.
@@ -5784,22 +5191,6 @@ RIL_REQUEST_IMS_REG_STATE_CHANGE
  * "data" is null
  */
 #define RIL_UNSOL_RESPONSE_SIM_STATUS_CHANGED 1019
-
-/**
- * RIL_UNSOL_RESPONSE_CDMA_NEW_SMS
- *
- * Called when new CDMA SMS is received
- *
- * "data" is const RIL_CDMA_SMS_Message *
- *
- * Callee will subsequently confirm the receipt of the SMS with
- * a RIL_REQUEST_CDMA_SMS_ACKNOWLEDGE
- *
- * No new RIL_UNSOL_RESPONSE_CDMA_NEW_SMS should be sent until
- * RIL_REQUEST_CDMA_SMS_ACKNOWLEDGE has been received
- *
- */
-#define RIL_UNSOL_RESPONSE_CDMA_NEW_SMS 1020
 
 /**
  * RIL_UNSOL_RESPONSE_NEW_BROADCAST_SMS
@@ -5816,17 +5207,6 @@ RIL_REQUEST_IMS_REG_STATE_CHANGE
  *
  */
 #define RIL_UNSOL_RESPONSE_NEW_BROADCAST_SMS 1021
-
-/**
- * RIL_UNSOL_CDMA_RUIM_SMS_STORAGE_FULL
- *
- * Indicates that SMS storage on the RUIM is full.  Messages
- * cannot be saved on the RUIM until space is freed.
- *
- * "data" is null
- *
- */
-#define RIL_UNSOL_CDMA_RUIM_SMS_STORAGE_FULL 1022
 
 /**
  * RIL_UNSOL_RESTRICTED_STATE_CHANGED
@@ -5850,39 +5230,6 @@ RIL_REQUEST_IMS_REG_STATE_CHANGE
  *
  */
 #define RIL_UNSOL_ENTER_EMERGENCY_CALLBACK_MODE 1024
-
-/**
- * RIL_UNSOL_CDMA_CALL_WAITING
- *
- * Called when CDMA radio receives a call waiting indication.
- *
- * "data" is const RIL_CDMA_CallWaiting *
- *
- */
-#define RIL_UNSOL_CDMA_CALL_WAITING 1025
-
-/**
- * RIL_UNSOL_CDMA_OTA_PROVISION_STATUS
- *
- * Called when CDMA radio receives an update of the progress of an
- * OTASP/OTAPA call.
- *
- * "data" is const int *
- *  For CDMA this is an integer OTASP/OTAPA status listed in
- *  RIL_CDMA_OTA_ProvisionStatus.
- *
- */
-#define RIL_UNSOL_CDMA_OTA_PROVISION_STATUS 1026
-
-/**
- * RIL_UNSOL_CDMA_INFO_REC
- *
- * Called when CDMA radio receives one or more info recs.
- *
- * "data" is const RIL_CDMA_InformationRecords *
- *
- */
-#define RIL_UNSOL_CDMA_INFO_REC 1027
 
 /**
  * RIL_UNSOL_OEM_HOOK_RAW
@@ -5916,26 +5263,6 @@ RIL_REQUEST_IMS_REG_STATE_CHANGE
  * "data" is null
  */
 #define RIL_UNSOL_RESEND_INCALL_MUTE 1030
-
-/**
- * RIL_UNSOL_CDMA_SUBSCRIPTION_SOURCE_CHANGED
- *
- * Called when CDMA subscription source changed.
- *
- * "data" is int *
- * ((int *)data)[0] is == RIL_CdmaSubscriptionSource
- */
-#define RIL_UNSOL_CDMA_SUBSCRIPTION_SOURCE_CHANGED 1031
-
-/**
- * RIL_UNSOL_CDMA_PRL_CHANGED
- *
- * Called when PRL (preferred roaming list) changes.
- *
- * "data" is int *
- * ((int *)data)[0] is PRL_VERSION as would be returned by RIL_REQUEST_CDMA_SUBSCRIPTION
- */
-#define RIL_UNSOL_CDMA_PRL_CHANGED 1032
 
 /**
  * RIL_UNSOL_EXIT_EMERGENCY_CALLBACK_MODE

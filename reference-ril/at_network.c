@@ -1440,30 +1440,6 @@ bool try_handle_unsol_net(const char* s)
 
         free(p);
         ret = true;
-    } else if (strStartsWith(s, "+WPRL: ")) {
-        RLOGI("Receive WPRL URC");
-        int version = -1;
-        line = p = strdup(s);
-        if (!line) {
-            RLOGE("+WPRL: Unable to allocate memory");
-            return true;
-        }
-
-        if (at_tok_start(&p) < 0) {
-            RLOGE("invalid +WPRL response: %s", s);
-            free(line);
-            return true;
-        }
-
-        if (at_tok_nextint(&p, &version) < 0) {
-            RLOGE("invalid +WPRL response: %s", s);
-            free(line);
-            return true;
-        }
-
-        free(line);
-        RIL_onUnsolicitedResponse(RIL_UNSOL_CDMA_PRL_CHANGED, &version, sizeof(version));
-        ret = true;
     } else if (strStartsWith(s, "+CSQ: ")) {
         RLOGI("Receive signal strength URC");
         on_signal_strength_unsol_resp(s);

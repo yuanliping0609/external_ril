@@ -1182,29 +1182,6 @@ on_exit:
     free(cmd);
 }
 
-static void requestExitEmergencyMode(void* data, size_t datalen, RIL_Token t)
-{
-    (void)data;
-    (void)datalen;
-
-    int err = AT_ERROR_GENERIC;
-    ATResponse* p_response = NULL;
-
-    err = at_send_command("AT+WSOS=0", &p_response);
-    if (err != AT_ERROR_OK || !p_response || p_response->success != AT_OK) {
-        RLOGE("Failure occurred in sending %s due to: %s", "AT+WSOS=0", at_io_err_str(err));
-        goto error;
-    }
-
-    RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
-    at_response_free(p_response);
-    return;
-
-error:
-    RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
-    at_response_free(p_response);
-}
-
 static void requestAnswer(void* data, size_t datalen, RIL_Token t)
 {
     (void)data;
@@ -1278,12 +1255,7 @@ on_exit:
 
 static void requestExitEmergencyCallbackMode(void* data, size_t datalen, RIL_Token t)
 {
-    if (TECH_BIT(getModemInfo()) == MDM_CDMA) {
-        requestExitEmergencyMode(data, datalen, t);
-    } else {
-        // VTS tests expect us to silently do nothing
-        RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
-    }
+    RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
 }
 
 static void requestGetVoiceRadioTech(void* data, size_t datalen, RIL_Token t)

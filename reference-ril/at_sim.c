@@ -30,9 +30,6 @@
 #include "atchannel.h"
 #include "misc.h"
 
-// CDMA Subscription Source
-#define SSOURCE(mdminfo) ((mdminfo)->subscription_source)
-
 static const struct timeval TIMEVAL_SIMPOLL = { 1, 0 };
 static int areUiccApplicationsEnabled = true;
 
@@ -1602,33 +1599,7 @@ bool try_handle_unsol_sim(const char* s)
 
     RLOGD("unsol sim string: %s", s);
 
-    if (strStartsWith(s, "+CCSS: ")) {
-        RLOGI("Receive cdma subscription source changed URC");
-        int source = 0;
-        line = p = strdup(s);
-        if (!line) {
-            RLOGE("+CCSS: Unable to allocate memory");
-            return true;
-        }
-
-        if (at_tok_start(&p) < 0) {
-            free(line);
-            return true;
-        }
-
-        if (at_tok_nextint(&p, &source) < 0) {
-            RLOGE("invalid +CCSS response: %s", line);
-            free(line);
-            return true;
-        }
-
-        SSOURCE(getModemInfo()) = source;
-        RIL_onUnsolicitedResponse(RIL_UNSOL_CDMA_SUBSCRIPTION_SOURCE_CHANGED,
-            &source, sizeof(source));
-        free(line);
-
-        ret = true;
-    } else if (strStartsWith(s, "+CUSATEND")) { // session end
+    if (strStartsWith(s, "+CUSATEND")) { // session end
         RLOGI("Receive STK session end URC");
         RIL_onUnsolicitedResponse(RIL_UNSOL_STK_SESSION_END, NULL, 0);
         ret = true;
