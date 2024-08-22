@@ -235,6 +235,7 @@ static void dispatchImsGsmSms(Parcel& p, RequestInfo* pRI, uint8_t retry, int32_
 static void dispatchGsmBrSmsCnf(Parcel& p, RequestInfo* pRI);
 static void dispatchDataProfile(Parcel& p, RequestInfo* pRI);
 static void dispatchManualSelection(Parcel& p, RequestInfo* pRI);
+static void dispatchConferenceInvite(Parcel& p, RequestInfo* pRI);
 static int responseInts(Parcel& p, void* response, size_t responselen);
 static int responseStrings(Parcel& p, void* response, size_t responselen);
 static int responseString(Parcel& p, void* response, size_t responselen);
@@ -1424,6 +1425,42 @@ static void dispatchDataProfile(Parcel& p, RequestInfo* pRI)
         free(dataProfilePtrs);
     }
 
+    return;
+
+invalid:
+    invalidCommandBlock(pRI);
+    return;
+}
+
+static void dispatchConferenceInvite(Parcel& p, RequestInfo* pRI)
+{
+    RIL_ConferenceInvite cinfo;
+    int32_t t;
+    status_t status;
+
+    RLOGD("dispatchConferenceInvite");
+    memset(&cinfo, 0, sizeof(RIL_ConferenceInvite));
+
+    status = p.readInt32(&t);
+    cinfo.nparticipants = (int)t;
+
+    if (status != NO_ERROR) {
+        goto invalid;
+    }
+
+    cinfo.numbers = strdupReadString(p);
+
+    if (!cinfo.numbers) {
+        goto invalid;
+    }
+
+    s_callbacks.onRequest(pRI->pCI->requestNumber, &cinfo, sizeof(RIL_ConferenceInvite), pRI);
+
+#ifdef MEMSET_FREED
+    memsetString(cinfo.numbers);
+#endif
+
+    free(cinfo.numbers);
     return;
 
 invalid:
@@ -3407,6 +3444,8 @@ extern "C" const char* requestToString(int request)
         return "IMS_REG_STATE_CHANGE";
     case RIL_REQUEST_IMS_SET_SERVICE_STATUS:
         return "IMS_SET_SERVICE_STATUS";
+    case RIL_REQUEST_DIAL_CONFERENCE:
+        return "DIAL_CONFERENCE";
     case RIL_UNSOL_RESPONSE_RADIO_STATE_CHANGED:
         return "UNSOL_RESPONSE_RADIO_STATE_CHANGED";
     case RIL_UNSOL_RESPONSE_CALL_STATE_CHANGED:

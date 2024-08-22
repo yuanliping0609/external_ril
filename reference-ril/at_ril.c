@@ -135,6 +135,8 @@ static inline req_category_t request2eventtype(int request)
     case RIL_REQUEST_EXIT_EMERGENCY_CALLBACK_MODE:
     case RIL_REQUEST_VOICE_RADIO_TECH:
     case RIL_REQUEST_EMERGENCY_DIAL:
+    case RIL_REQUEST_ADD_PARTICIPANT:
+    case RIL_REQUEST_DIAL_CONFERENCE:
         type = REQ_CALL_TYPE;
         break;
     case RIL_REQUEST_ENTER_NETWORK_DEPERSONALIZATION:
@@ -202,9 +204,7 @@ static inline req_category_t request2eventtype(int request)
     case RIL_REQUEST_ISIM_AUTHENTICATION:
     case RIL_REQUEST_ACKNOWLEDGE_INCOMING_GSM_SMS_WITH_PDU:
     case RIL_REQUEST_STK_SEND_ENVELOPE_WITH_STATUS:
-    case RIL_REQUEST_ADD_PARTICIPANT:
     case RIL_REQUEST_REMOVE_PARTICIPANT:
-    case RIL_REQUEST_DIAL_CONFERENCE:
         type = REQ_NOT_SUPPORTED;
         break;
     default:

@@ -31,6 +31,9 @@
 #include "atchannel.h"
 #include "misc.h"
 
+#define MAX_PARTICIPANTS 5
+#define MAX_TEL_DIGITS 15
+
 static int clccStateToRILState(int state, RIL_CallState* p_state)
 {
     switch (state) {
@@ -535,6 +538,95 @@ static void requestEccDial(void* data, size_t datalen, RIL_Token t)
 error:
     RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
     at_response_free(p_response);
+}
+
+static void requestHandleConference(int request, void* data, size_t datalen, RIL_Token t)
+{
+    (void)datalen;
+
+    ATResponse* p_response = NULL;
+    RIL_ConferenceInvite* cinfo = NULL;
+    RIL_Errno ril_err = RIL_E_SUCCESS;
+    char* cmd = NULL;
+    int err = -1;
+
+    if (data == NULL) {
+        RLOGE("requestHandleConference data is invalid");
+        RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
+        return;
+    }
+
+    cinfo = (RIL_ConferenceInvite*)data;
+    int nmembers = cinfo->nparticipants;
+
+    if (request == RIL_REQUEST_DIAL_CONFERENCE) {
+        if (nmembers < 2 || nmembers > 5) {
+            RLOGE("Invalid number of members");
+            ril_err = RIL_E_INVALID_ARGUMENTS;
+            goto on_exit;
+        }
+    } else {
+        if (nmembers < 1 || nmembers > 5) {
+            RLOGE("Invalid number of members");
+            ril_err = RIL_E_INVALID_ARGUMENTS;
+            goto on_exit;
+        }
+    }
+
+    char* numbers = cinfo->numbers;
+
+    if (numbers == NULL) {
+        RLOGE("Invalid number string!");
+        ril_err = RIL_E_INVALID_ARGUMENTS;
+        goto on_exit;
+    }
+
+    int len = strlen("AT+MPC=1,") + MAX_TEL_DIGITS * MAX_PARTICIPANTS + /* tel numbers */
+        MAX_PARTICIPANTS * 2 + /* double qoutes */
+        MAX_PARTICIPANTS - 1 + /* commas */
+        +1; /* null terminator */
+
+    cmd = malloc(len);
+
+    if (!cmd) {
+        RLOGE("Failed to allocate memory");
+        ril_err = RIL_E_NO_MEMORY;
+        goto on_exit;
+    }
+
+    memset(cmd, 0, len);
+
+    if (request == RIL_REQUEST_DIAL_CONFERENCE) {
+        strcpy(cmd, "AT+MPC=1,");
+    } else {
+        strcpy(cmd, "AT+MPC=0,");
+    }
+
+    char* token = strtok(numbers, ";");
+
+    for (int i = 0; i < nmembers && token; ++i) {
+        /* get first number and add to the cmd buffer */
+        strcat(cmd, "\"");
+        strcat(cmd, token);
+        strcat(cmd, "\"");
+
+        if (i < nmembers - 1)
+            strcat(cmd, ",");
+
+        token = strtok(NULL, ";");
+    }
+
+    err = at_send_command(cmd, &p_response);
+    if (err != AT_ERROR_OK || !p_response || p_response->success != AT_OK) {
+        RLOGE("Failure occurred in sending %s due to: %s", cmd, at_io_err_str(err));
+        ril_err = RIL_E_GENERIC_FAILURE;
+        goto on_exit;
+    }
+
+on_exit:
+    RIL_onRequestComplete(t, ril_err, NULL, 0);
+    at_response_free(p_response);
+    free(cmd);
 }
 
 /**
@@ -1359,6 +1451,10 @@ void on_request_call(int request, void* data, size_t datalen, RIL_Token t)
         break;
     case RIL_REQUEST_EMERGENCY_DIAL:
         requestEccDial(data, datalen, t);
+        break;
+    case RIL_REQUEST_ADD_PARTICIPANT:
+    case RIL_REQUEST_DIAL_CONFERENCE:
+        requestHandleConference(request, data, datalen, t);
         break;
     default:
         RLOGE("Request not supported");

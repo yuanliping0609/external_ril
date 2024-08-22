@@ -20,3 +20,6 @@
     { RIL_REQUEST_IMS_REG_STATE_CHANGE, dispatchInts, responseVoid },
     { RIL_REQUEST_IMS_REGISTRATION_STATE, dispatchVoid, responseImsStatus },
     { RIL_REQUEST_IMS_SET_SERVICE_STATUS, dispatchInts, responseVoid },
+    { RIL_REQUEST_ADD_PARTICIPANT, dispatchConferenceInvite, responseVoid },
+    { 505, NULL, NULL },
+    { RIL_REQUEST_DIAL_CONFERENCE, dispatchConferenceInvite, responseVoid },

@@ -490,6 +490,13 @@ typedef struct {
 } RIL_Dial;
 
 typedef struct {
+    /* number of participants */
+    int nparticipants;
+    /* a semicolon separated string contains all the numbers */
+    char* numbers;
+} RIL_ConferenceInvite;
+
+typedef struct {
     int command; /* one of the commands listed for TS 27.007 +CRSM*/
     int fileid; /* EF id */
     char* path; /* "pathid" from TS 27.007 +CRSM command.
