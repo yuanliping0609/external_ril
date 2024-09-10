@@ -643,6 +643,7 @@ static void onRequest(int request, void* data, size_t datalen, RIL_Token t)
         case RIL_REQUEST_SCREEN_STATE:
         case RIL_REQUEST_ENABLE_MODEM:
         case RIL_REQUEST_GET_MODEM_STATUS:
+        case RIL_REQUEST_GSM_GET_BROADCAST_SMS_CONFIG:
             // Process all the above, even though the radio is off
             break;
 

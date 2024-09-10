@@ -443,7 +443,7 @@ static void requestSetSmsBroadcastConfig(void* data, size_t datalen, RIL_Token t
         goto on_exit;
     }
 
-    err = at_send_command_singleline(cmd, "+CSCB:", &p_response);
+    err = at_send_command(cmd, &p_response);
     if (err != AT_ERROR_OK || !p_response || p_response->success != AT_OK) {
         RLOGE("Failure occurred in sending %s due to: %s", cmd, at_io_err_str(err));
         ril_err = RIL_E_GENERIC_FAILURE;
