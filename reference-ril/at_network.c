@@ -1444,6 +1444,12 @@ bool try_handle_unsol_net(const char* s)
         RLOGI("Receive signal strength URC");
         on_signal_strength_unsol_resp(s);
         ret = true;
+    } else if (strStartsWith(s, "+CIREGU")) {
+        RLOGI("Receive ims_reg change URC");
+        RIL_onUnsolicitedResponse(
+            RIL_UNSOL_RESPONSE_IMS_NETWORK_STATE_CHANGED,
+            NULL, 0);
+        ret = true;
     } else {
         RLOGD("Can't match any unsol network handlers");
     }
