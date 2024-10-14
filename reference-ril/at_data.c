@@ -209,7 +209,6 @@ static RIL_Errno setInterfaceState(const char* interfaceName, enum InterfaceStat
 
     if (state == kInterfaceDown) {
         request.ifr_flags &= ~(IFF_UP | IFF_RUNNING);
-        request.ifr_flags |= IFF_DOWN;
     } else
         request.ifr_flags |= IFF_UP;
 
