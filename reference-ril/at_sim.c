@@ -1635,6 +1635,10 @@ bool try_handle_unsol_sim(const char* s)
 
         free(line);
         ret = true;
+    } else if (strStartsWith(s, "^MSIMST")) {
+        RLOGI("sim card insert/remove");
+        RIL_onUnsolicitedResponse(RIL_UNSOL_RESPONSE_SIM_STATUS_CHANGED, NULL, 0);
+        ret = true;
     } else {
         RLOGD("Can't match any unsol sim handlers");
     }
