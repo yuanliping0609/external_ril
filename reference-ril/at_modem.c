@@ -18,6 +18,7 @@
 #define NDEBUG 1
 
 #include <assert.h>
+#include <stdio.h>
 #include <sys/cdefs.h>
 
 #include <log/log_radio.h>
@@ -345,17 +346,49 @@ static void requestGetIMEISV(void* data, size_t datalen, RIL_Token t)
 static void requestOemHookStrings(void* data, size_t datalen, RIL_Token t)
 {
     int i;
+    int num_strings;
     const char** cur;
+    ATResponse* p_response;
+    char** responseStr = NULL;
 
     RLOGD("got OEM_HOOK_STRINGS: 0x%8p %lu", data, (long)datalen);
 
-    for (i = (datalen / sizeof(char*)), cur = (const char**)data;
-         i > 0; cur++, i--) {
-        RLOGD("> '%s'", *cur);
+    num_strings = datalen / sizeof(char*);
+    responseStr = malloc(num_strings * sizeof(char*));
+    if (responseStr == NULL) {
+        RLOGE("Failed to allocate memory");
+        RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
+        return;
     }
 
-    // echo back strings
-    RIL_onRequestComplete(t, RIL_E_SUCCESS, data, datalen);
+    memset(responseStr, 0, num_strings * sizeof(char*));
+    for (i = 0, cur = (const char**)data;
+         i < num_strings; cur++, i++) {
+        p_response = NULL;
+        at_send_command(*cur, &p_response);
+
+        if (p_response && p_response->p_intermediates && p_response->p_intermediates->line) {
+            if (asprintf(&responseStr[i], "%s", p_response->p_intermediates->line) < 0) {
+                RLOGE("Failed to allocate memory");
+            }
+        } else {
+            if (asprintf(&responseStr[i], "%s", "ERROR") < 0) {
+                RLOGE("Failed to allocate memory");
+            }
+        }
+
+        at_response_free(p_response);
+    }
+
+    RIL_onRequestComplete(t, RIL_E_SUCCESS, responseStr, num_strings * sizeof(responseStr));
+    for (i = 0; i < num_strings; i++) {
+        if (responseStr[i]) {
+            free(responseStr[i]);
+            responseStr[i] = NULL;
+        }
+    }
+    free(responseStr);
+    responseStr = NULL;
 }
 
 static void requestEnableModem(void* data, size_t datalen, RIL_Token t)
