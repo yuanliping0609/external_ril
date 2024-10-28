@@ -987,12 +987,13 @@ static void requestGetNeighboringCellIds(void* data, size_t datalen, RIL_Token t
     (void)data;
     (void)datalen;
 
-    RIL_CellInfo info;
-    memset(&info, 0, sizeof(info));
-    info.cellInfoType = RIL_CELL_INFO_TYPE_LTE;
-    info.registered = 1;
+    RIL_NeighboringCell info[] = {
+        {"2024", 90},
+        {"2025", 91},
+    };
 
-    RIL_onRequestComplete(t, RIL_E_SUCCESS, &info, sizeof(info));
+    RIL_onRequestComplete(t, RIL_E_SUCCESS, &info,
+        sizeof(info) / sizeof(info[0]) * sizeof(RIL_NeighboringCell*));
 }
 
 static void requestSetNetowkAutoMode(void* data, size_t datalen, RIL_Token t)

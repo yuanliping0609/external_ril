@@ -1978,7 +1978,7 @@ static int responseCellList(Parcel& p, void* response, size_t responselen)
     p.writeInt32(num);
 
     for (int i = 0; i < num; i++) {
-        RIL_NeighboringCell* p_cur = ((RIL_NeighboringCell**)response)[i];
+        RIL_NeighboringCell* p_cur = &((RIL_NeighboringCell*)response)[i];
 
         p.writeInt32(p_cur->rssi);
         writeStringToParcel(p, p_cur->cid);
