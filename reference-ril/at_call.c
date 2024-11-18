@@ -1318,8 +1318,8 @@ static void requestSeparateConnection(void* data, size_t datalen, RIL_Token t)
     // Make sure that party is in a valid range.
     // (Note: The Telephony middle layer imposes a range of 1 to 7.
     // It's sufficient for us to just make sure it's single digit.)
-    if (party <= 0 || party >= 10) {
-        RLOGE("requestSeparateConnection party is invalid!");
+    if (party <= 0) {
+        RLOGE("requestSeparateConnection party：%d is invalid!", party);
         RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
         return;
     }
