@@ -988,8 +988,8 @@ static void requestGetNeighboringCellIds(void* data, size_t datalen, RIL_Token t
     (void)datalen;
 
     RIL_NeighboringCell info[] = {
-        {"2024", 90},
-        {"2025", 91},
+        { "2024", 90 },
+        { "2025", 91 },
     };
 
     RIL_onRequestComplete(t, RIL_E_SUCCESS, &info,
