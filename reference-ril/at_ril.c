@@ -634,6 +634,7 @@ static void onRequest(int request, void* data, size_t datalen, RIL_Token t)
         case RIL_REQUEST_QUERY_NETWORK_SELECTION_MODE:
         case RIL_REQUEST_QUERY_TTY_MODE:
         case RIL_REQUEST_RADIO_POWER:
+        case RIL_REQUEST_OEM_HOOK_STRINGS:
         case RIL_REQUEST_SET_BAND_MODE:
         case RIL_REQUEST_SET_LOCATION_UPDATES:
         case RIL_REQUEST_SET_PREFERRED_NETWORK_TYPE:
