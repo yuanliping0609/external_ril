@@ -29,7 +29,7 @@
 #include <time.h>
 #include <unistd.h>
 
-#include <log/log_radio.h>
+#include <telephony/ril_log.h>
 
 #include "at_tok.h"
 #include "atchannel.h"

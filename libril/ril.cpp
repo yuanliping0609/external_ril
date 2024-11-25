@@ -18,18 +18,14 @@
 #define LOG_TAG "RIL_CPP"
 #define NDEBUG 1
 
-#include <telephony/record_stream.h>
-#include <telephony/ril.h>
-
 #include <assert.h>
-#include <binder/Parcel.h>
 #include <ctype.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <jstring.h>
 #include <limits.h>
-#include <log/log_radio.h>
 #include <netinet/in.h>
+#include <parcel.h>
 #include <pthread.h>
 #include <pwd.h>
 #include <stdarg.h>
@@ -40,10 +36,13 @@
 #include <time.h>
 #include <unistd.h>
 
+#include <telephony/record_stream.h>
+#include <telephony/ril.h>
+#include <telephony/ril_log.h>
+
 #include <local_socket.h>
 #include <ril_event.h>
 #define INVALID_HEX_CHAR 16
-using namespace android;
 
 extern "C" void RIL_onRequestComplete(RIL_Token t, RIL_Errno e, void* response, size_t responselen);
 

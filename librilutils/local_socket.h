@@ -20,10 +20,10 @@
 #define LOCAL_SOCKET_DIR "/dev/socket"
 
 #include <errno.h>
-#include <log/log_radio.h>
 #include <string.h>
 #include <sys/types.h>
 #include <telephony/ril.h>
+#include <telephony/ril_log.h>
 #ifdef __cplusplus
 extern "C" {
 #endif

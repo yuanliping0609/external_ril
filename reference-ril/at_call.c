@@ -21,7 +21,7 @@
 #include <stdio.h>
 #include <sys/cdefs.h>
 
-#include <log/log_radio.h>
+#include <telephony/ril_log.h>
 
 #include "at_call.h"
 #include "at_modem.h"

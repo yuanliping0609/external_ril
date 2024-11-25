@@ -20,13 +20,13 @@
 
 #include <errno.h>
 #include <fcntl.h>
-#include <log/log_radio.h>
 #include <stdlib.h>
 #include <unistd.h>
 
 #include <pthread.h>
 #include <ril_event.h>
 #include <telephony/ril.h>
+#include <telephony/ril_log.h>
 
 static pthread_mutex_t listMutex;
 #define MUTEX_ACQUIRE() pthread_mutex_lock(&listMutex)

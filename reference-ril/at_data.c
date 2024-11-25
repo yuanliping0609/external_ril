@@ -28,7 +28,7 @@
 #include <sys/ioctl.h>
 #include <sys/socket.h>
 
-#include <log/log_radio.h>
+#include <telephony/ril_log.h>
 
 #include "at_data.h"
 #include "at_modem.h"

@@ -20,13 +20,14 @@
 
 #include <assert.h>
 #include <errno.h>
-#include <log/log_radio.h>
 #include <netinet/in.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
-#include <telephony/record_stream.h>
 #include <unistd.h>
+
+#include <telephony/record_stream.h>
+#include <telephony/ril_log.h>
 
 #define HEADER_SIZE 4
 
