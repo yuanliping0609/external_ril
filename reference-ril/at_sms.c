@@ -423,8 +423,14 @@ static void requestSetSmsBroadcastConfig(void* data, size_t datalen, RIL_Token t
 
     pGsmBci = (RIL_GSM_BroadcastSmsConfigInfo**)data;
 
-    memset(channel, 0, size);
-    memset(languageId, 0, size);
+    if (size == 0) {
+        channel = NULL;
+        languageId = NULL;
+    } else {
+        memset(channel, 0, size);
+        memset(languageId, 0, size);
+    }
+
     RLOGD("requestSetGsmBroadcastConfig %zu, count %d", datalen, count);
 
     for (i = 0; i < count; i++) {
@@ -436,7 +442,9 @@ static void requestSetSmsBroadcastConfig(void* data, size_t datalen, RIL_Token t
     }
 
     ret = asprintf(&cmd, "AT+CSCB=%d,\"%s\",\"%s\"",
-        (*pGsmBci[0]).selected ? 0 : 1, channel, languageId);
+        (*pGsmBci[0]).selected ? 0 : 1, 
+        channel ? channel : "",
+        languageId ? languageId : "");
     if (ret < 0) {
         RLOGE("Failed to allocate memory");
         ril_err = RIL_E_NO_MEMORY;
