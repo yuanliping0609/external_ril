@@ -854,42 +854,57 @@ static void requestSetupDataCall(void* data, size_t datalen, RIL_Token t)
             goto error;
         }
 
+        at_response_free(p_response);
+        p_response = NULL;
+
         // Set required QoS params to default
         err = at_send_command("AT+CGQREQ=1", &p_response);
         if (err != AT_ERROR_OK || !p_response || p_response->success != AT_OK) {
-            RLOGE("Failure occurred in sending %s due to: %s", cmd, at_io_err_str(err));
+            RLOGE("Failure occurred in sending AT+CGQREQ=1 due to: %s", at_io_err_str(err));
             ril_err = RIL_E_GENERIC_FAILURE;
             goto error;
         }
+
+        at_response_free(p_response);
+        p_response = NULL;
 
         // Set minimum QoS params to default
         err = at_send_command("AT+CGQMIN=1", &p_response);
         if (err != AT_ERROR_OK || !p_response || p_response->success != AT_OK) {
-            RLOGE("Failure occurred in sending %s due to: %s", cmd, at_io_err_str(err));
+            RLOGE("Failure occurred in sending AT+CGQMIN=1 due to: %s", at_io_err_str(err));
             ril_err = RIL_E_GENERIC_FAILURE;
             goto error;
         }
+
+        at_response_free(p_response);
+        p_response = NULL;
 
         // packet-domain event reporting
         err = at_send_command("AT+CGEREP=1,0", &p_response);
         if (err != AT_ERROR_OK || !p_response || p_response->success != AT_OK) {
-            RLOGE("Failure occurred in sending %s due to: %s", cmd, at_io_err_str(err));
+            RLOGE("Failure occurred in sending AT+CGEREP=1,0 due to: %s", at_io_err_str(err));
             ril_err = RIL_E_GENERIC_FAILURE;
             goto error;
         }
+
+        at_response_free(p_response);
+        p_response = NULL;
 
         // Hangup anything that's happening there now
         err = at_send_command("AT+CGACT=1,0", &p_response);
         if (err != AT_ERROR_OK || !p_response || p_response->success != AT_OK) {
-            RLOGE("Failure occurred in sending %s due to: %s", cmd, at_io_err_str(err));
+            RLOGE("Failure occurred in sending AT+CGACT=1,0 due to: %s", at_io_err_str(err));
             ril_err = RIL_E_GENERIC_FAILURE;
             goto error;
         }
 
+        at_response_free(p_response);
+        p_response = NULL;
+
         // Start data on PDP context 1
         err = at_send_command("ATD*99***1#", &p_response);
         if (err != AT_ERROR_OK || !p_response || p_response->success != AT_OK) {
-            RLOGE("Failure occurred in sending %s due to: %s", cmd, at_io_err_str(err));
+            RLOGE("Failure occurred in sending ATD*99***1# due to: %s", at_io_err_str(err));
             ril_err = RIL_E_GENERIC_FAILURE;
             goto error;
         }

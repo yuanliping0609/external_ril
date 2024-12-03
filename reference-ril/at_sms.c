@@ -442,7 +442,7 @@ static void requestSetSmsBroadcastConfig(void* data, size_t datalen, RIL_Token t
     }
 
     ret = asprintf(&cmd, "AT+CSCB=%d,\"%s\",\"%s\"",
-        (*pGsmBci[0]).selected ? 0 : 1, 
+        (*pGsmBci[0]).selected ? 0 : 1,
         channel ? channel : "",
         languageId ? languageId : "");
     if (ret < 0) {
