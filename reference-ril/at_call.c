@@ -1486,6 +1486,14 @@ bool try_handle_unsol_call(const char* s)
         RLOGI("Receive supplementary service URC(Remote UNHOLD)");
         unsolicitedSuppSvcNotification(1, 3, 0, 0, NULL);
         ret = true;
+    } else if (strStartsWith(s, "MPTY")) {
+        RLOGI("Receive supplementary service URC(Remote MPTY)");
+        unsolicitedSuppSvcNotification(1, 4, 0, 0, NULL);
+        ret = true;
+    } else if (strStartsWith(s, "UNMPTY")) {
+        RLOGI("Receive supplementary service URC(Remote UNMPTY)");
+        unsolicitedSuppSvcNotification(1, 10, 0, 0, NULL);
+        ret = true;
     } else if (strStartsWith(s, "+WSOS: ")) {
         RLOGI("Receive emergency mode changed URC");
         char state = 0;
