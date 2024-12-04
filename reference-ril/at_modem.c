@@ -367,8 +367,8 @@ static void requestOemHookStrings(void* data, size_t datalen, RIL_Token t)
         p_response = NULL;
         at_send_command(*cur, &p_response);
 
-        if (p_response && p_response->p_intermediates && p_response->p_intermediates->line) {
-            if (asprintf(&responseStr[i], "%s", p_response->p_intermediates->line) < 0) {
+        if (p_response && p_response->finalResponse) {
+            if (asprintf(&responseStr[i], "%s", p_response->finalResponse) < 0) {
                 RLOGE("Failed to allocate memory");
             }
         } else {
