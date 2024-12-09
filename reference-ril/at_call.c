@@ -198,6 +198,7 @@ static void requestCallSelection(void* data, size_t datalen, RIL_Token t, int re
     char hangupForeground[] = "AT+CHLD=1";
     char switchWaiting[] = "AT+CHLD=2";
     char conference[] = "AT+CHLD=3";
+    char transfer[] = "AT+CHLD=4";
     char reject[] = "ATH";
 
     char* atCommand = NULL;
@@ -233,6 +234,9 @@ static void requestCallSelection(void* data, size_t datalen, RIL_Token t, int re
         // User determined user busy (reject)
         atCommand = reject;
         break;
+    case RIL_REQUEST_EXPLICIT_CALL_TRANSFER:
+        // "Transfers call"
+        atCommand = transfer;
     default:
         assert(0);
     }
@@ -1385,6 +1389,7 @@ void on_request_call(int request, void* data, size_t datalen, RIL_Token t)
     case RIL_REQUEST_SWITCH_WAITING_OR_HOLDING_AND_ACTIVE:
     case RIL_REQUEST_CONFERENCE:
     case RIL_REQUEST_UDUB:
+    case RIL_REQUEST_EXPLICIT_CALL_TRANSFER:
         requestCallSelection(data, datalen, t, request);
         break;
     case RIL_REQUEST_LAST_CALL_FAIL_CAUSE:
