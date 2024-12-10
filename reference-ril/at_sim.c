@@ -1396,7 +1396,7 @@ static void requestCancelUSSD(void* data, size_t datalen, RIL_Token t)
     RIL_Errno ril_err = RIL_E_SUCCESS;
     int err = -1;
 
-    err = at_send_command_numeric("AT+CUSD=2", &p_response);
+    err = at_send_command("AT+CUSD=2", &p_response);
 
     if (err != AT_ERROR_OK || !p_response || p_response->success != AT_OK) {
         RLOGE("Failure occurred in sending %s due to: %s", "AT+CUSD=2", at_io_err_str(err));
@@ -1405,8 +1405,7 @@ static void requestCancelUSSD(void* data, size_t datalen, RIL_Token t)
     }
 
 on_exit:
-    RIL_onRequestComplete(t, ril_err, ril_err == RIL_E_SUCCESS ? p_response->p_intermediates->line : NULL,
-        ril_err == RIL_E_SUCCESS ? sizeof(char*) : 0);
+    RIL_onRequestComplete(t, ril_err, NULL, 0);
     at_response_free(p_response);
 }
 
