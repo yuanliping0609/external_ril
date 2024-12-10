@@ -3440,6 +3440,8 @@ extern "C" const char* requestToString(int request)
         return "RIL_REQUEST_GET_ACTIVITY_INFO";
     case RIL_REQUEST_GET_MODEM_STATUS:
         return "GET_MODEM_STATUS";
+    case RIL_REQUEST_DEFLECT_CALL:
+        return "DEFLECT_CALL";
     case RIL_REQUEST_EMERGENCY_DIAL:
         return "EMERGENCY_DIAL";
     case RIL_REQUEST_ENABLE_MODEM:

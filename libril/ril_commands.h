@@ -162,3 +162,4 @@
     { 145, NULL, NULL },
     { RIL_REQUEST_ENABLE_MODEM, dispatchInts, responseVoid },
     { RIL_REQUEST_GET_MODEM_STATUS, dispatchVoid, responseInts },
+    { RIL_REQUEST_DEFLECT_CALL, dispatchString, responseVoid },

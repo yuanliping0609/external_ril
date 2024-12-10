@@ -1361,6 +1361,40 @@ static void requestGetVoiceRadioTech(void* data, size_t datalen, RIL_Token t)
         RIL_onRequestComplete(t, RIL_E_SUCCESS, &tech, sizeof(tech));
 }
 
+static void requestDeflectCall(void* data, size_t datalen, RIL_Token t)
+{
+    (void)datalen;
+
+    ATResponse* p_response = NULL;
+    RIL_Errno ril_err = RIL_E_SUCCESS;
+    int err = -1;
+    char* cmd;
+
+    if (data == NULL) {
+        RLOGE("data in %s is NULL!", __func__);
+        RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
+        return;
+    }
+
+    if (asprintf(&cmd, "AT+CTFR=%s", (char*)data) < 0) {
+        RLOGE("Failed to allocate memory");
+        ril_err = RIL_E_NO_MEMORY;
+        goto on_exit;
+    }
+
+    err = at_send_command(cmd, &p_response);
+    if (err != AT_ERROR_OK || !p_response || p_response->success != AT_OK) {
+        RLOGE("Fail to send %s due to: %s", cmd, at_io_err_str(err));
+        ril_err = RIL_E_GENERIC_FAILURE;
+        goto on_exit;
+    }
+
+on_exit:
+    RIL_onRequestComplete(t, ril_err, NULL, 0);
+    at_response_free(p_response);
+    free(cmd);
+}
+
 static void requestGetTtyMode(void* data, size_t datalen, RIL_Token t)
 {
     (void)data;
@@ -1451,6 +1485,9 @@ void on_request_call(int request, void* data, size_t datalen, RIL_Token t)
         break;
     case RIL_REQUEST_VOICE_RADIO_TECH:
         requestGetVoiceRadioTech(data, datalen, t);
+        break;
+    case RIL_REQUEST_DEFLECT_CALL:
+        requestDeflectCall(data, datalen, t);
         break;
     case RIL_REQUEST_EMERGENCY_DIAL:
         requestEccDial(data, datalen, t);
