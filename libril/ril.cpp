@@ -2152,16 +2152,16 @@ static int responseCellInfoList(Parcel& p, void* response, size_t responselen)
         return RIL_ERRNO_INVALID_RESPONSE;
     }
 
-    if (responselen % sizeof(RIL_CellInfo) != 0) {
+    if (responselen % sizeof(RIL_CellInfo_v12) != 0) {
         RLOGE("responseCellInfoList: invalid response length %d expected multiple of %d",
-            (int)responselen, (int)sizeof(RIL_CellInfo));
+            (int)responselen, (int)sizeof(RIL_CellInfo_v12));
         return RIL_ERRNO_INVALID_RESPONSE;
     }
 
-    int num = responselen / sizeof(RIL_CellInfo);
+    int num = responselen / sizeof(RIL_CellInfo_v12);
     p.writeInt32(num);
 
-    RIL_CellInfo* p_cur = (RIL_CellInfo*)response;
+    RIL_CellInfo_v12* p_cur = (RIL_CellInfo_v12*)response;
     startResponse;
     int i;
     for (i = 0; i < num; i++) {

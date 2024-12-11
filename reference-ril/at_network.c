@@ -20,6 +20,7 @@
 #include <assert.h>
 #include <limits.h>
 #include <stdio.h>
+#include <string.h>
 #include <sys/cdefs.h>
 
 #include <log/log_radio.h>
@@ -653,39 +654,262 @@ static void requestSetCellInfoListRate(void* data, size_t datalen, RIL_Token t)
     RIL_onRequestComplete(t, RIL_E_SUCCESS, NULL, 0);
 }
 
+static int get_lte_cell_info_from_response(char* line, RIL_CellInfo_v12* info)
+{
+    int err = -1;
+    const int invalid = 0x7FFFFFFF;
+
+    err = at_tok_nextint(&line, &info->CellInfo.lte.cellIdentityLte.mcc);
+    if (err < 0) {
+        RLOGE("Fail to parse mcc in %s", __func__);
+        goto on_exit;
+    }
+
+    err = at_tok_nextint(&line, &info->CellInfo.lte.cellIdentityLte.mnc);
+    if (err < 0) {
+        RLOGE("Fail to parse mnc in %s", __func__);
+        goto on_exit;
+    }
+
+    err = at_tok_nextint(&line, &info->CellInfo.lte.cellIdentityLte.ci);
+    if (err < 0) {
+        RLOGE("Fail to parse ci in %s", __func__);
+        goto on_exit;
+    }
+
+    err = at_tok_nextint(&line, &info->CellInfo.lte.cellIdentityLte.pci);
+    if (err < 0) {
+        RLOGE("Fail to parse pci in %s", __func__);
+        goto on_exit;
+    }
+
+    err = at_tok_nextint(&line, &info->CellInfo.lte.cellIdentityLte.tac);
+    if (err < 0) {
+        RLOGE("Fail to parse tac in %s", __func__);
+        goto on_exit;
+    }
+
+    err = at_tok_nextint(&line, &info->CellInfo.lte.cellIdentityLte.earfcn);
+    if (err < 0) {
+        RLOGE("Fail to parse earfcn in %s", __func__);
+        goto on_exit;
+    }
+
+    err = at_tok_nextint(&line, &info->CellInfo.lte.signalStrengthLte.signalStrength);
+    if (err < 0) {
+        RLOGE("Fail to parse signalStrength in %s", __func__);
+        goto on_exit;
+    }
+
+    err = at_tok_nextint(&line, &info->CellInfo.lte.signalStrengthLte.rsrp);
+    if (err < 0) {
+        RLOGE("Fail to parse rsrp in %s", __func__);
+        goto on_exit;
+    }
+
+    err = at_tok_nextint(&line, &info->CellInfo.lte.signalStrengthLte.rsrq);
+    if (err < 0) {
+        RLOGE("Fail to parse rsrq in %s", __func__);
+        goto on_exit;
+    }
+
+    info->CellInfo.lte.signalStrengthLte.rssnr = invalid;
+    info->CellInfo.lte.signalStrengthLte.cqi = invalid;
+    info->CellInfo.lte.signalStrengthLte.timingAdvance = invalid;
+
+on_exit:
+    return err;
+}
+
+static int get_cell_info_from_response(char* line, RIL_CellInfo_v12* info)
+{
+    int ret = 0;
+
+    assert(line);
+    assert(info);
+
+    switch (info->cellInfoType) {
+    case RIL_CELL_INFO_TYPE_LTE:
+        ret = get_lte_cell_info_from_response(line, info);
+        break;
+    default:
+        RLOGE("Unsupported cell info type %d", info->cellInfoType);
+        ret = -1;
+        break;
+    }
+
+    return ret;
+}
+
+static int get_neighboring_cell_info_from_response(char* line, RIL_CellInfo_v12* info)
+{
+    int err = -1;
+    int ret = 0;
+    char* type = NULL;
+
+    err = at_tok_start(&line);
+    if (err < 0) {
+        RLOGE("Fail to parse line in %s", __func__);
+        goto on_exit;
+    }
+
+    err = at_tok_nextstr(&line, &type);
+    if (err < 0) {
+        RLOGE("Fail to parse neighboring cellInfoType in %s", __func__);
+        goto on_exit;
+    }
+
+    if (!strcmp(type, "LTE") || !strcmp(type, "1")) {
+        RLOGI("The neighboring cell info type is LTE!");
+
+        uint64_t curtime;
+
+        info->cellInfoType = RIL_CELL_INFO_TYPE_LTE;
+        info->registered = 0;
+        info->timeStampType = RIL_TIMESTAMP_TYPE_OEM_RIL;
+        curtime = ril_nano_time();
+        info->timeStamp = curtime - 1000;
+    } else if (!strcmp(type, "NONE")) {
+        RLOGW("No available neighboring cells found");
+        ret = 0;
+        goto on_exit;
+    } else {
+        RLOGE("Unsupported neighboring cell info type %s", type);
+        ret = -1;
+        goto on_exit;
+    }
+
+    ret = get_cell_info_from_response(line, info);
+    if (ret == 0)
+        ret = 1;
+
+on_exit:
+    return ret;
+}
+
+static void get_neighboring_cell_info_list(RIL_CellInfo_v12* ci, RIL_Token t)
+{
+    ATResponse* p_response = NULL;
+    RIL_CellInfo_v12* cell_info_lists = NULL;
+    RIL_Errno ril_err = RIL_E_SUCCESS;
+    int cell_num = 0;
+    int cell_num_lte = 0;
+    ATLine* cur = NULL;
+    int err = -1;
+
+    err = at_send_command_multiline("AT^MONNC", "^MONNC:", &p_response);
+    if (err != AT_ERROR_OK || !p_response || p_response->success != AT_OK) {
+        RLOGE("Failure occurred in sending %s due to: %s", "AT^MONNC", at_io_err_str(err));
+        ril_err = RIL_E_GENERIC_FAILURE;
+        goto on_exit;
+    }
+
+    for (cur = p_response->p_intermediates; cur; cur = cur->p_next) {
+        cell_num++;
+    }
+
+    cell_info_lists = calloc(cell_num + 1, sizeof(RIL_CellInfo_v12));
+    if (cell_info_lists == NULL) {
+        RLOGE("Fail to allocate memory in %s", __func__);
+        ril_err = RIL_E_NO_MEMORY;
+        goto on_exit;
+    }
+
+    for (cur = p_response->p_intermediates; cur != NULL && cell_num_lte < cell_num; cur = cur->p_next) {
+        err = get_neighboring_cell_info_from_response(cur->line, cell_info_lists + cell_num_lte + 1);
+        if (err < 0) {
+            RLOGE("Fail to parse neighboring cell info");
+            ril_err = RIL_E_GENERIC_FAILURE;
+            goto on_exit;
+        } else if (err == 0) {
+            RLOGW("No available neighboring cell info");
+            ril_err = RIL_E_SUCCESS;
+            break;
+        }
+
+        cell_num_lte++;
+    }
+
+    memcpy(&cell_info_lists[0], ci, sizeof(RIL_CellInfo_v12));
+
+on_exit:
+    RIL_onRequestComplete(t, ril_err, ril_err == RIL_E_SUCCESS ? cell_info_lists : ci,
+        ril_err == RIL_E_SUCCESS ? (cell_num_lte + 1) * sizeof(RIL_CellInfo_v12) : sizeof(RIL_CellInfo_v12));
+    at_response_free(p_response);
+    free(cell_info_lists);
+}
+
 static void requestGetCellInfoList(void* data, size_t datalen, RIL_Token t)
 {
     (void)data;
     (void)datalen;
 
-    uint64_t curTime = ril_nano_time();
-    RIL_CellInfo_v12 ci[1] = {
-        { // ci[0]
-            1, // cellInfoType
-            1, // registered
-            RIL_TIMESTAMP_TYPE_MODEM,
-            curTime - 1000, // Fake some time in the past
-            { // union CellInfo
-                { // RIL_CellInfoGsm gsm
-                    {
-                        // gsm.cellIdneityGsm
-                        getMcc(), // mcc
-                        getMnc(), // mnc
-                        s_lac, // lac
-                        s_cid, // cid
-                        0, // arfcn unknown
-                        0x1, // Base Station Identity Code set to arbitrarily 1
-                    },
-                    {
-                        // gsm.signalStrengthGsm
-                        10, // signalStrength
-                        0 // bitErrorRate
-                        ,
-                        INT_MAX // timingAdvance invalid value
-                    } } } }
-    };
+    ATResponse* p_response = NULL;
+    RIL_Errno ril_err = RIL_E_SUCCESS;
+    RIL_CellInfo_v12* ci = NULL;
+    char* line = NULL;
+    char* type = NULL;
+    uint64_t curtime;
+    int err = -1;
 
-    RIL_onRequestComplete(t, RIL_E_SUCCESS, ci, sizeof(ci));
+    err = at_send_command_singleline("AT^MONSC", "^MONSC:", &p_response);
+    if (err != AT_ERROR_OK || !p_response || p_response->success != AT_OK) {
+        RLOGE("Failure occurred in sending %s due to: %s", "AT^MONSC", at_io_err_str(err));
+        ril_err = RIL_E_GENERIC_FAILURE;
+        goto on_exit;
+    }
+
+    line = p_response->p_intermediates->line;
+    ci = (RIL_CellInfo_v12*)calloc(1, sizeof(RIL_CellInfo_v12));
+    if (ci == NULL) {
+        RLOGE("Fail to allocate memory in %s", __func__);
+        ril_err = RIL_E_NO_MEMORY;
+        goto on_exit;
+    }
+
+    err = at_tok_start(&line);
+    if (err < 0) {
+        RLOGE("Fail to parse line in %s", __func__);
+        ril_err = RIL_E_GENERIC_FAILURE;
+        goto on_exit;
+    }
+
+    err = at_tok_nextstr(&line, &type);
+    if (err < 0) {
+        RLOGE("Fail to parse cellInfoType in %s", __func__);
+        ril_err = RIL_E_GENERIC_FAILURE;
+        goto on_exit;
+    }
+
+    if (!strcmp(type, "LTE") || !strcmp(type, "1")) {
+        RLOGI("The cell info type is LTE!");
+
+        ci->cellInfoType = RIL_CELL_INFO_TYPE_LTE;
+        ci->registered = 1;
+        ci->timeStampType = RIL_TIMESTAMP_TYPE_OEM_RIL;
+        curtime = ril_nano_time();
+        ci->timeStamp = curtime - 1000;
+    } else {
+        RLOGE("The cell info type is not invalid!");
+        ril_err = RIL_E_GENERIC_FAILURE;
+        goto on_exit;
+    }
+
+    if (get_cell_info_from_response(line, ci) < 0) {
+        RLOGE("Fail to parse cell info in %s", __func__);
+        ril_err = RIL_E_GENERIC_FAILURE;
+        goto on_exit;
+    }
+
+on_exit:
+    if (ril_err == RIL_E_SUCCESS) {
+        get_neighboring_cell_info_list(ci, t);
+    } else {
+        RIL_onRequestComplete(t, RIL_E_GENERIC_FAILURE, NULL, 0);
+    }
+
+    at_response_free(p_response);
+    free(ci);
 }
 
 static void requestImsRegState(void* data, size_t datalen, RIL_Token t)
