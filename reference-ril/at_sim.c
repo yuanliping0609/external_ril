@@ -1097,7 +1097,7 @@ static void requestSendUSSD(void* data, size_t datalen, RIL_Token t)
 
     ussdRequest = (char*)(data);
 
-    if (asprintf(&cmd, "AT+CUSD=1,\"%s\"", ussdRequest) < 0) {
+    if (asprintf(&cmd, "AT+CUSD=1,%s", ussdRequest) < 0) {
         RLOGE("Failed to allocate memory");
         ril_err = RIL_E_NO_MEMORY;
         goto on_exit;
@@ -1637,6 +1637,61 @@ bool try_handle_unsol_sim(const char* s)
     } else if (strStartsWith(s, "^MSIMST")) {
         RLOGI("sim card insert/remove");
         RIL_onUnsolicitedResponse(RIL_UNSOL_RESPONSE_SIM_STATUS_CHANGED, NULL, 0);
+        ret = true;
+    } else if (strStartsWith(s, "+CUSD:")) {
+        char* message = NULL;
+        char* response[3];
+        int type, dcs;
+
+        RLOGI("Receive +CUSD URC");
+        line = p = strdup(s);
+        if (!line) {
+            RLOGE("+CUSD: Unable to allocate memory");
+            return true;
+        }
+
+        if (at_tok_start(&p) < 0) {
+            RLOGE("invalid +CUSD response: %s", s);
+            free(line);
+            return true;
+        }
+
+        if (at_tok_nextint(&p, &type) < 0) {
+            RLOGE("%s fail", s);
+            free(line);
+            return true;
+        }
+
+        if (at_tok_nextstr(&p, &message) < 0) {
+            RLOGE("%s fail", s);
+            free(line);
+            return true;
+        }
+
+        if (at_tok_nextint(&p, &dcs) < 0) {
+            RLOGE("%s fail", s);
+            free(line);
+            return true;
+        }
+
+        if (asprintf(&response[0], "%d", type) < 0) {
+            RLOGE("asprintf type fail in %s", __func__);
+            free(line);
+            return true;
+        }
+
+        response[1] = message;
+        if (asprintf(&response[2], "%d", dcs) < 0) {
+            RLOGE("asprintf dcs fail in %s", __func__);
+            free(response[0]);
+            free(line);
+            return true;
+        }
+
+        RIL_onUnsolicitedResponse(RIL_UNSOL_ON_USSD, response, sizeof(response));
+        free(response[0]);
+        free(response[2]);
+        free(line);
         ret = true;
     } else {
         RLOGD("Can't match any unsol sim handlers");
